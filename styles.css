@@ -125,3 +125,21 @@ button {
 .btn-delete {
   background: #d93838;
 }
+
+/* Scanner Styles */
+#reader {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 15px;
+  background: #000;
+}
+
+#reader video {
+  object-fit: cover;
+}
+
+.btn-scan {
+  background: #0056b3;
+  margin-bottom: 15px;
+}

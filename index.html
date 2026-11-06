@@ -18,6 +18,10 @@
       <!-- Wallet passes will render here -->
     </div>
 
+    <!-- Camera Viewfinder Container -->
+    <div id="reader" class="hidden"></div>
+    <button type="button" id="btn-scan" class="btn-scan">📷 Scan Card</button>
+
     <form id="add-pass-form">
       <input type="text" id="pass-title" placeholder="Store or Pass Name" required>
       <input type="text" id="pass-value" placeholder="Card Number or ID" required>
@@ -25,9 +29,10 @@
     </form>
   </main>
 
-  <!-- Barcode & QR Code Libraries -->
+  <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   
   <script src="app.js"></script>
 </body>

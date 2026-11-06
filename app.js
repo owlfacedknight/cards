@@ -5,14 +5,60 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// 2. Wallet Logic & State
+// 2. Scanner Logic
+const scanBtn = document.getElementById('btn-scan');
+const readerDiv = document.getElementById('reader');
+const passValueInput = document.getElementById('pass-value');
+let html5QrCode;
+let isScanning = false;
+
+scanBtn.addEventListener('click', () => {
+  if (!html5QrCode) {
+    html5QrCode = new Html5Qrcode("reader");
+  }
+
+  if (isScanning) {
+    // Stop scanning
+    html5QrCode.stop().then(() => {
+      isScanning = false;
+      readerDiv.classList.add('hidden');
+      scanBtn.innerHTML = '📷 Scan Card';
+    });
+  } else {
+    // Start scanning
+    readerDiv.classList.remove('hidden');
+    html5QrCode.start(
+      { facingMode: "environment" }, // Use rear camera
+      { fps: 10, qrbox: { width: 250, height: 150 } },
+      (decodedText) => {
+        // On successful scan
+        passValueInput.value = decodedText;
+        html5QrCode.stop().then(() => {
+          isScanning = false;
+          readerDiv.classList.add('hidden');
+          scanBtn.innerHTML = '📷 Scan Card';
+        });
+      },
+      (errorMessage) => {
+        // Ignore continuous scanning background errors
+      }
+    ).then(() => {
+      isScanning = true;
+      scanBtn.innerHTML = '❌ Cancel Scan';
+    }).catch(err => {
+      alert("Camera access denied or unavailable.");
+      readerDiv.classList.add('hidden');
+    });
+  }
+});
+
+// 3. Wallet Logic & State
 const form = document.getElementById('add-pass-form');
 const container = document.getElementById('wallet-container');
 let passes = JSON.parse(localStorage.getItem('wallet_passes')) || [];
-let expandedIndex = null; // Tracks which card is currently open
+let expandedIndex = null;
 
 function toggleCard(index) {
-  // If clicking the already open card, close it. Otherwise, open the clicked card.
   expandedIndex = expandedIndex === index ? null : index;
   renderPasses();
 }
@@ -31,7 +77,6 @@ window.toggleCode = (index) => {
 };
 
 window.removePass = (index) => {
-  // Generate a random 4-character string
   const challenge = Math.random().toString(36).substring(2, 6).toUpperCase();
   const userInput = prompt(`To delete this pass, type this exact code: ${challenge}`);
   
@@ -52,11 +97,9 @@ function renderPasses() {
     const card = document.createElement('div');
     
     if (expandedIndex === index) {
-      // EXPANDED STATE
       card.className = 'pass-card expanded';
       card.innerHTML = `
         <h3>${pass.title}</h3>
-        
         <div class="code-toggle" onclick="toggleCode(${index})">
           <div id="barcode-${index}" class="barcode-container">
             <svg class="barcode" data-value="${pass.value}"></svg>
@@ -64,7 +107,6 @@ function renderPasses() {
           <div id="qr-${index}" class="qr-container hidden"></div>
           <p class="tap-hint">Tap code to switch (Barcode / QR)</p>
         </div>
-        
         <div class="pass-code">${pass.value}</div>
         <div class="button-group">
           <button class="btn-close" onclick="toggleCard(${index})">Close</button>
@@ -73,34 +115,24 @@ function renderPasses() {
       `;
       container.appendChild(card);
 
-      // Generate Barcode
       const svg = card.querySelector('.barcode');
       try {
-        JsBarcode(svg, pass.value, {
-          format: "CODE128", width: 2, height: 60, displayValue: false, background: "#ffffff", lineColor: "#000000", margin: 5
-        });
+        JsBarcode(svg, pass.value, { format: "CODE128", width: 2, height: 60, displayValue: false, background: "#ffffff", lineColor: "#000000", margin: 5 });
       } catch (e) {
         svg.outerHTML = `<p class="error">Invalid barcode data</p>`;
       }
 
-      // Generate QR Code
       const qrContainer = card.querySelector(`#qr-${index}`);
       try {
-        new QRCode(qrContainer, {
-          text: pass.value, width: 120, height: 120, colorDark: "#000000", colorLight: "#ffffff"
-        });
+        new QRCode(qrContainer, { text: pass.value, width: 120, height: 120, colorDark: "#000000", colorLight: "#ffffff" });
       } catch (e) {
         qrContainer.innerHTML = `<p class="error">Invalid QR data</p>`;
       }
 
     } else {
-      // COLLAPSED STATE
       card.className = 'pass-card collapsed';
       card.onclick = () => toggleCard(index);
-      card.innerHTML = `
-        <div class="card-icon">💳</div>
-        <h3>${pass.title}</h3>
-      `;
+      card.innerHTML = `<div class="card-icon">💳</div><h3>${pass.title}</h3>`;
       container.appendChild(card);
     }
   });
@@ -109,7 +141,7 @@ function renderPasses() {
 form.addEventListener('submit', (e) => {
   e.preventDefault();
   const title = document.getElementById('pass-title').value;
-  const value = document.getElementById('pass-value').value;
+  const value = passValueInput.value;
   
   passes.push({ title, value });
   localStorage.setItem('wallet_passes', JSON.stringify(passes));
@@ -118,5 +150,4 @@ form.addEventListener('submit', (e) => {
   renderPasses();
 });
 
-// Initial Render
 renderPasses();
