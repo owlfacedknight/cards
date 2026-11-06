@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Minimal Wallet</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="styles.css">
+  <meta name="theme-color" content="#1a1a1a">
+</head>
+<body>
+  <header>
+    <h1>My Wallet</h1>
+  </header>
+  
+  <main>
+    <div id="wallet-container">
+      <!-- Wallet passes will render here -->
+    </div>
+
+    <form id="add-pass-form">
+      <input type="text" id="pass-title" placeholder="Store or Pass Name" required>
+      <input type="text" id="pass-value" placeholder="Card Number or ID" required>
+      <button type="submit">Add to Wallet</button>
+    </form>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
