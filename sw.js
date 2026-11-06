@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wallet-cache-v3';
+const CACHE_NAME = 'wallet-cache-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -6,7 +6,8 @@ const ASSETS_TO_CACHE = [
   '/app.js',
   '/manifest.json',
   'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+  'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
 ];
 
 self.addEventListener('install', (event) => {
