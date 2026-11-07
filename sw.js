@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wallet-cache-v8';
+const CACHE_NAME = 'wallet-cache-v9';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -28,7 +28,11 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => Promise.all(
       cacheNames
-        .filter((cacheName) => cacheName.startsWith('wallet-cache-') && cacheName !== CACHE_NAME)
+        .filter(
+          (cacheName) =>
+            cacheName.startsWith('wallet-cache-') &&
+            cacheName !== CACHE_NAME
+        )
         .map((cacheName) => caches.delete(cacheName))
     )).then(() => self.clients.claim())
   );
@@ -42,7 +46,10 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  if (request.method !== 'GET' || new URL(request.url).protocol === 'chrome-extension:') {
+  if (
+    request.method !== 'GET' ||
+    new URL(request.url).protocol === 'chrome-extension:'
+  ) {
     return;
   }
 
