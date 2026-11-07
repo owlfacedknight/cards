@@ -1,7 +1,7 @@
-// 1. Register Service Worker
+// 1. Register Service Worker (Fixed path for GitHub Pages)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(err => console.error(err));
+    navigator.serviceWorker.register('sw.js').catch(err => console.error(err));
   });
 }
 
@@ -14,6 +14,7 @@ let isScanning = false;
 
 scanBtn.addEventListener('click', () => {
   if (!html5QrCode) {
+    // Explicitly support common 1D barcodes and QR codes
     html5QrCode = new Html5Qrcode("reader");
   }
 
@@ -28,8 +29,9 @@ scanBtn.addEventListener('click', () => {
     // Start scanning
     readerDiv.classList.remove('hidden');
     html5QrCode.start(
-      { facingMode: "environment" }, // Use rear camera
-      { fps: 10, qrbox: { width: 250, height: 150 } },
+      { facingMode: "environment" },
+      // Removed 'qrbox' to scan the entire frame. Much better for wide 1D barcodes.
+      { fps: 15 },
       (decodedText) => {
         // On successful scan
         passValueInput.value = decodedText;
@@ -40,7 +42,7 @@ scanBtn.addEventListener('click', () => {
         });
       },
       (errorMessage) => {
-        // Ignore continuous scanning background errors
+        // Ignore background scanning errors
       }
     ).then(() => {
       isScanning = true;
