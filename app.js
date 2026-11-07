@@ -359,17 +359,18 @@ function getDynamicQrbox(viewfinderWidth, viewfinderHeight) {
   return { width, height };
 }
 
-function startScannerWithFallback(cameraConfig, scanConfig) {
+function startScannerWithFallback(cameraConfigs, scanConfig) {
   const resolutions = [
     { ideal: 1920, min: 960 },
     { ideal: 1280, min: 720 },
     { ideal: 960, min: 640 },
   ];
 
-  const attempt = (index) => {
+  const tryCamera = (cameraIndex, resolutionIndex) => {
+    const resolution = resolutions[resolutionIndex];
     const videoConstraints = {
-      width: { ideal: resolutions[index].ideal, min: resolutions[index].min },
-      height: { ideal: Math.floor(resolutions[index].ideal * 0.75), min: Math.floor(resolutions[index].min * 0.75) },
+      width: { ideal: resolution.ideal, min: resolution.min },
+      height: { ideal: Math.floor(resolution.ideal * 0.75), min: Math.floor(resolution.min * 0.75) },
       advanced: [
         { focusMode: 'continuous' },
         { exposureMode: 'continuous' },
@@ -377,7 +378,7 @@ function startScannerWithFallback(cameraConfig, scanConfig) {
       ],
     };
 
-    return html5QrCode.start(cameraConfig, {
+    return html5QrCode.start(cameraConfigs[cameraIndex], {
       ...scanConfig,
       videoConstraints,
     }, (decodedText) => {
@@ -392,16 +393,39 @@ function startScannerWithFallback(cameraConfig, scanConfig) {
       });
     }, () => {
       // Ignore background scan errors while the camera is trying to detect a code.
-    })
-      .catch((error) => {
-        if (index < resolutions.length - 1) {
-          return attempt(index + 1);
-        }
-        throw error;
-      });
+    }).catch((error) => {
+      if (resolutionIndex < resolutions.length - 1) {
+        return tryCamera(cameraIndex, resolutionIndex + 1);
+      }
+      if (cameraIndex < cameraConfigs.length - 1) {
+        return tryCamera(cameraIndex + 1, 0);
+      }
+      throw error;
+    });
   };
 
-  return attempt(0);
+  return tryCamera(0, 0);
+}
+
+async function getRearCameraConfigs() {
+  const cameraConfigs = [];
+
+  try {
+    const cameras = await Html5Qrcode.getCameras();
+    const rearCamera = cameras.find((camera) => /back|rear|environment|wide/i.test(camera.label));
+    if (rearCamera) {
+      cameraConfigs.push(rearCamera.id);
+    }
+  } catch (error) {
+    // Camera enumeration may be unavailable until permission is granted; use facingMode fallbacks.
+  }
+
+  // exact avoids Safari choosing the front camera when 'environment' is treated as a preference.
+  cameraConfigs.push(
+    { facingMode: { exact: 'environment' } },
+    { facingMode: { ideal: 'environment' } }
+  );
+  return cameraConfigs;
 }
 
 function handleScannerStart() {
@@ -442,7 +466,6 @@ function handleScannerStart() {
     return;
   }
 
-  const cameraConfig = { facingMode: 'environment' };
   const scanConfig = {
     fps: 8,
     qrbox: (viewfinderWidth, viewfinderHeight) => getDynamicQrbox(viewfinderWidth, viewfinderHeight),
@@ -450,7 +473,8 @@ function handleScannerStart() {
   };
 
   readerContainer.classList.remove('hidden');
-  startScannerWithFallback(cameraConfig, scanConfig)
+  getRearCameraConfigs()
+    .then((cameraConfigs) => startScannerWithFallback(cameraConfigs, scanConfig))
     .then(() => {
       isScanning = true;
       scanBtn.textContent = '❌ Cancel Scan';
@@ -459,7 +483,7 @@ function handleScannerStart() {
     .catch((error) => {
       console.error('Camera error:', error);
       readerContainer.classList.add('hidden');
-      showStatus('Camera access denied or unavailable on this device.', 'error');
+      showStatus('Unable to start the rear camera. Check camera permissions and try again.', 'error');
     });
 }
 
