@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Minimal wallet icon">
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#6ec6ff"/>
+      <stop offset="100%" stop-color="#7ef0d3"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <rect x="76" y="160" width="360" height="220" rx="46" fill="rgba(255,255,255,0.28)" stroke="rgba(0,0,0,0.22)"/>
+  <rect x="102" y="198" width="250" height="32" rx="16" fill="rgba(17,17,17,0.9)"/>
+  <rect x="102" y="254" width="184" height="20" rx="10" fill="rgba(17,17,17,0.8)"/>
+  <rect x="102" y="292" width="220" height="20" rx="10" fill="rgba(17,17,17,0.8)"/>
+  <circle cx="378" cy="264" r="38" fill="rgba(255,255,255,0.75)"/>
+  <path d="M368 264h20M378 254v20" stroke="#111" stroke-linecap="round" stroke-width="8"/>
+</svg>

@@ -1,21 +1,268 @@
-// 1. Register Service Worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(err => console.error(err));
-  });
-}
-
-// 2. Scanner Logic (Optimized for 1D Barcodes)
+const STORAGE_KEY = 'wallet_passes';
+const form = document.getElementById('add-pass-form');
+const container = document.getElementById('wallet-container');
+const statusMessage = document.getElementById('status-message');
+const passTitleInput = document.getElementById('pass-title');
+const passValueInput = document.getElementById('pass-value');
 const scanBtn = document.getElementById('btn-scan');
 const readerContainer = document.getElementById('reader-container');
-const passValueInput = document.getElementById('pass-value');
+
+let passes = loadPasses();
+let expandedIndex = null;
 let html5QrCode;
 let isScanning = false;
 
-scanBtn.addEventListener('click', () => {
+function showStatus(message, type = 'info') {
+  statusMessage.textContent = message;
+  statusMessage.className = `status-message ${type}`;
+}
+
+function loadPasses() {
+  try {
+    const storedPasses = localStorage.getItem(STORAGE_KEY);
+    if (!storedPasses) {
+      return [];
+    }
+
+    const parsed = JSON.parse(storedPasses);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((pass) => pass && typeof pass.title === 'string' && typeof pass.value === 'string');
+  } catch (error) {
+    console.error('Failed to load wallet passes:', error);
+    return [];
+  }
+}
+
+function persistPasses() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(passes));
+}
+
+function toggleCard(index) {
+  expandedIndex = expandedIndex === index ? null : index;
+  renderPasses();
+}
+
+function toggleCode(index) {
+  const barcodeEl = document.getElementById(`barcode-${index}`);
+  const qrEl = document.getElementById(`qr-${index}`);
+
+  if (!barcodeEl || !qrEl) {
+    return;
+  }
+
+  const showBarcode = barcodeEl.classList.contains('hidden');
+  barcodeEl.classList.toggle('hidden', !showBarcode);
+  qrEl.classList.toggle('hidden', showBarcode);
+}
+
+function removePass(index) {
+  const challenge = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const userInput = window.prompt(`To delete this pass, type this exact code: ${challenge}`);
+
+  if (userInput === null) {
+    return;
+  }
+
+  if (userInput.trim().toUpperCase() !== challenge) {
+    showStatus('Incorrect code. Deletion cancelled.', 'error');
+    return;
+  }
+
+  passes.splice(index, 1);
+  expandedIndex = null;
+  persistPasses();
+  renderPasses();
+  showStatus('Pass deleted.', 'success');
+}
+
+function createCollapsedCard(pass, index) {
+  const card = document.createElement('div');
+  card.className = 'pass-card collapsed';
+  card.setAttribute('role', 'button');
+  card.setAttribute('tabindex', '0');
+
+  const icon = document.createElement('div');
+  icon.className = 'card-icon';
+  icon.textContent = '💳';
+
+  const title = document.createElement('h3');
+  title.textContent = pass.title;
+
+  card.append(icon, title);
+
+  const activate = () => toggleCard(index);
+  card.addEventListener('click', activate);
+  card.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      activate();
+    }
+  });
+
+  return card;
+}
+
+function createExpandedCard(pass, index) {
+  const card = document.createElement('article');
+  card.className = 'pass-card expanded';
+
+  const title = document.createElement('h3');
+  title.textContent = pass.title;
+
+  const codeToggle = document.createElement('div');
+  codeToggle.className = 'code-toggle';
+  codeToggle.setAttribute('role', 'button');
+  codeToggle.setAttribute('tabindex', '0');
+  codeToggle.setAttribute('aria-label', 'Toggle code display');
+
+  const barcodeContainer = document.createElement('div');
+  barcodeContainer.id = `barcode-${index}`;
+  barcodeContainer.className = 'barcode-container';
+
+  const barcode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  barcode.setAttribute('class', 'barcode');
+  barcode.setAttribute('data-value', pass.value);
+  barcodeContainer.appendChild(barcode);
+
+  const qrContainer = document.createElement('div');
+  qrContainer.id = `qr-${index}`;
+  qrContainer.className = 'qr-container hidden';
+
+  const tapHint = document.createElement('p');
+  tapHint.className = 'tap-hint';
+  tapHint.textContent = 'Tap code to switch (Barcode / QR)';
+
+  codeToggle.append(barcodeContainer, qrContainer, tapHint);
+
+  const passCode = document.createElement('div');
+  passCode.className = 'pass-code';
+  passCode.textContent = pass.value;
+
+  const buttonGroup = document.createElement('div');
+  buttonGroup.className = 'button-group';
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'btn-close';
+  closeButton.textContent = 'Close';
+  closeButton.addEventListener('click', () => toggleCard(index));
+
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.className = 'btn-delete';
+  deleteButton.textContent = 'Delete';
+  deleteButton.addEventListener('click', () => removePass(index));
+
+  buttonGroup.append(closeButton, deleteButton);
+  card.append(title, codeToggle, passCode, buttonGroup);
+
+  codeToggle.addEventListener('click', () => toggleCode(index));
+  codeToggle.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleCode(index);
+    }
+  });
+
+  try {
+    JsBarcode(barcode, pass.value, {
+      format: 'CODE128',
+      width: 2,
+      height: 60,
+      displayValue: false,
+      background: '#ffffff',
+      lineColor: '#000000',
+      margin: 5,
+    });
+  } catch (error) {
+    barcodeContainer.innerHTML = '<p class="error">Invalid barcode data</p>';
+  }
+
+  try {
+    new QRCode(qrContainer, {
+      text: pass.value,
+      width: 120,
+      height: 120,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+    });
+  } catch (error) {
+    qrContainer.innerHTML = '<p class="error">Invalid QR data</p>';
+  }
+
+  return card;
+}
+
+function renderPasses() {
+  container.innerHTML = '';
+
+  if (passes.length === 0) {
+    const emptyState = document.createElement('p');
+    emptyState.className = 'empty-state';
+    emptyState.textContent = 'No cards saved yet. Add one to get started.';
+    container.appendChild(emptyState);
+    return;
+  }
+
+  passes.forEach((pass, index) => {
+    const card = expandedIndex === index ? createExpandedCard(pass, index) : createCollapsedCard(pass, index);
+    container.appendChild(card);
+  });
+}
+
+function validateForm() {
+  const title = passTitleInput.value.trim();
+  const value = passValueInput.value.trim();
+
+  if (!title || !value) {
+    showStatus('Please add both a pass name and a value.', 'error');
+    return null;
+  }
+
+  if (title.length > 80 || value.length > 500) {
+    showStatus('Your pass title or value is too long.', 'error');
+    return null;
+  }
+
+  return { title, value };
+}
+
+form.addEventListener('submit', (event) => {
+  event.preventDefault();
+
+  const payload = validateForm();
+  if (!payload) {
+    return;
+  }
+
+  const duplicate = passes.some(
+    (pass) => pass.title.toLowerCase() === payload.title.toLowerCase() && pass.value.toLowerCase() === payload.value.toLowerCase()
+  );
+
+  if (duplicate) {
+    showStatus('This pass already exists in your wallet.', 'error');
+    return;
+  }
+
+  passes.push({ title: payload.title, value: payload.value });
+  persistPasses();
+  form.reset();
+  renderPasses();
+  showStatus('Pass added to wallet.', 'success');
+  passTitleInput.focus();
+});
+
+function handleScannerStart() {
+  if (!('mediaDevices' in navigator) || !navigator.mediaDevices?.getUserMedia) {
+    showStatus('This browser does not support camera scanning.', 'error');
+    return;
+  }
+
   if (!html5QrCode) {
-    // Explicitly define formats to dramatically speed up 1D barcode recognition
-    html5QrCode = new Html5Qrcode("reader", {
+    html5QrCode = new Html5Qrcode('reader', {
       formatsToSupport: [
         Html5QrcodeSupportedFormats.QR_CODE,
         Html5QrcodeSupportedFormats.CODE_128,
@@ -23,145 +270,61 @@ scanBtn.addEventListener('click', () => {
         Html5QrcodeSupportedFormats.EAN_13,
         Html5QrcodeSupportedFormats.EAN_8,
         Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E
-      ]
+        Html5QrcodeSupportedFormats.UPC_E,
+      ],
     });
   }
 
   if (isScanning) {
-    html5QrCode.stop().then(() => {
-      isScanning = false;
-      readerContainer.classList.add('hidden');
-      scanBtn.innerHTML = '📷 Scan Card';
-    });
-  } else {
-    readerContainer.classList.remove('hidden');
-    html5QrCode.start(
-      { facingMode: "environment" },
-      {
-        fps: 10,
-        // A wide, short box forces the engine to only check the center, perfect for 1D barcodes
-        qrbox: { width: 300, height: 150 },
-        // Enforcing aspect ratio prevents video stretching which breaks 1D barcode lines
-        aspectRatio: 1.333334 
-      },
-      (decodedText) => {
-        passValueInput.value = decodedText;
-        html5QrCode.stop().then(() => {
-          isScanning = false;
-          readerContainer.classList.add('hidden');
-          scanBtn.innerHTML = '📷 Scan Card';
-        });
-      },
-      (errorMessage) => {
-        // Ignore continuous background scanning errors
-      }
-    ).then(() => {
-      isScanning = true;
-      scanBtn.innerHTML = '❌ Cancel Scan';
-    }).catch(err => {
-      alert("Camera access denied or unavailable.");
-      readerContainer.classList.add('hidden');
-    });
+    html5QrCode.stop()
+      .then(() => {
+        isScanning = false;
+        readerContainer.classList.add('hidden');
+        scanBtn.textContent = '📷 Scan Card';
+        showStatus('Scanner cancelled.', 'info');
+      })
+      .catch((error) => {
+        console.error('Failed to stop camera:', error);
+        showStatus('Unable to stop the camera cleanly.', 'error');
+      });
+    return;
   }
-});
 
-// 3. Wallet Logic & State
-const form = document.getElementById('add-pass-form');
-const container = document.getElementById('wallet-container');
-let passes = JSON.parse(localStorage.getItem('wallet_passes')) || [];
-let expandedIndex = null;
-
-function toggleCard(index) {
-  expandedIndex = expandedIndex === index ? null : index;
-  renderPasses();
-}
-
-window.toggleCode = (index) => {
-  const barcodeEl = document.getElementById(`barcode-${index}`);
-  const qrEl = document.getElementById(`qr-${index}`);
-  
-  if (barcodeEl.classList.contains('hidden')) {
-    barcodeEl.classList.remove('hidden');
-    qrEl.classList.add('hidden');
-  } else {
-    barcodeEl.classList.add('hidden');
-    qrEl.classList.remove('hidden');
-  }
-};
-
-window.removePass = (index) => {
-  const challenge = Math.random().toString(36).substring(2, 6).toUpperCase();
-  const userInput = prompt(`To delete this pass, type this exact code: ${challenge}`);
-  
-  if (userInput === challenge) {
-    passes.splice(index, 1);
-    expandedIndex = null;
-    localStorage.setItem('wallet_passes', JSON.stringify(passes));
-    renderPasses();
-  } else if (userInput !== null) {
-    alert("Incorrect code. Deletion cancelled.");
-  }
-};
-
-function renderPasses() {
-  container.innerHTML = '';
-  
-  passes.forEach((pass, index) => {
-    const card = document.createElement('div');
-    
-    if (expandedIndex === index) {
-      card.className = 'pass-card expanded';
-      card.innerHTML = `
-        <h3>${pass.title}</h3>
-        <div class="code-toggle" onclick="toggleCode(${index})">
-          <div id="barcode-${index}" class="barcode-container">
-            <svg class="barcode" data-value="${pass.value}"></svg>
-          </div>
-          <div id="qr-${index}" class="qr-container hidden"></div>
-          <p class="tap-hint">Tap code to switch (Barcode / QR)</p>
-        </div>
-        <div class="pass-code">${pass.value}</div>
-        <div class="button-group">
-          <button class="btn-close" onclick="toggleCard(${index})">Close</button>
-          <button class="btn-delete" onclick="removePass(${index})">Delete</button>
-        </div>
-      `;
-      container.appendChild(card);
-
-      const svg = card.querySelector('.barcode');
-      try {
-        JsBarcode(svg, pass.value, { format: "CODE128", width: 2, height: 60, displayValue: false, background: "#ffffff", lineColor: "#000000", margin: 5 });
-      } catch (e) {
-        svg.outerHTML = `<p class="error">Invalid barcode data</p>`;
-      }
-
-      const qrContainer = card.querySelector(`#qr-${index}`);
-      try {
-        new QRCode(qrContainer, { text: pass.value, width: 120, height: 120, colorDark: "#000000", colorLight: "#ffffff" });
-      } catch (e) {
-        qrContainer.innerHTML = `<p class="error">Invalid QR data</p>`;
-      }
-
-    } else {
-      card.className = 'pass-card collapsed';
-      card.onclick = () => toggleCard(index);
-      card.innerHTML = `<div class="card-icon">💳</div><h3>${pass.title}</h3>`;
-      container.appendChild(card);
+  readerContainer.classList.remove('hidden');
+  html5QrCode.start(
+    { facingMode: 'environment' },
+    {
+      fps: 10,
+      qrbox: { width: 300, height: 150 },
+      aspectRatio: 1.333334,
+    },
+    (decodedText) => {
+      passValueInput.value = decodedText.trim();
+      showStatus('Card scanned successfully.', 'success');
+      html5QrCode.stop().then(() => {
+        isScanning = false;
+        readerContainer.classList.add('hidden');
+        scanBtn.textContent = '📷 Scan Card';
+      }).catch((error) => {
+        console.error('Failed to stop scanner after decoding:', error);
+      });
+    },
+    () => {
+      // Ignore background scan errors while the camera is trying to detect a code.
     }
-  });
+  )
+    .then(() => {
+      isScanning = true;
+      scanBtn.textContent = '❌ Cancel Scan';
+      showStatus('Camera is ready. Point it at a card.', 'info');
+    })
+    .catch((error) => {
+      console.error('Camera error:', error);
+      readerContainer.classList.add('hidden');
+      showStatus('Camera access denied or unavailable.', 'error');
+    });
 }
 
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const title = document.getElementById('pass-title').value;
-  const value = passValueInput.value;
-  
-  passes.push({ title, value });
-  localStorage.setItem('wallet_passes', JSON.stringify(passes));
-  
-  form.reset();
-  renderPasses();
-});
-
+scanBtn.addEventListener('click', handleScannerStart);
 renderPasses();
+showStatus('Ready to add a card.', 'info');

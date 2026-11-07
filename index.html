@@ -3,40 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Minimal wallet for saving cards, barcodes, and QR codes offline.">
+  <meta name="theme-color" content="#1a1a1a">
   <title>Minimal Wallet</title>
+  <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="styles.css">
-  <meta name="theme-color" content="#1a1a1a">
 </head>
 <body>
-  <header>
-    <h1>My Wallet</h1>
-  </header>
-  
-  <main>
-    <div id="wallet-container">
-      <!-- Wallet passes will render here -->
-    </div>
+  <div class="app-shell">
+    <header>
+      <h1>My Wallet</h1>
+    </header>
 
-    <!-- Camera Viewfinder Container -->
-    <div id="reader-container" class="hidden">
-      <div id="reader"></div>
-      <p class="scan-hint">Hold card 4-6 inches away and let camera focus.</p>
-    </div>
-    <button type="button" id="btn-scan" class="btn-scan">📷 Scan Card</button>
+    <main>
+      <div id="wallet-container" aria-live="polite"></div>
 
-    <form id="add-pass-form">
-      <input type="text" id="pass-title" placeholder="Store or Pass Name" required>
-      <input type="text" id="pass-value" placeholder="Card Number or ID" required>
-      <button type="submit" class="btn-primary">Add to Wallet</button>
-    </form>
-  </main>
+      <div id="reader-container" class="hidden" aria-live="polite">
+        <div id="reader" aria-label="Card scanner"></div>
+        <p class="scan-hint">Hold the card 4–6 inches away and let the camera focus.</p>
+      </div>
 
-  <!-- Libraries -->
+      <button type="button" id="btn-scan" class="btn-scan">📷 Scan Card</button>
+      <p id="status-message" class="status-message info" role="status" aria-live="polite">Ready to add a card.</p>
+
+      <form id="add-pass-form" novalidate>
+        <label class="sr-only" for="pass-title">Pass name</label>
+        <input type="text" id="pass-title" placeholder="Store or Pass Name" autocomplete="off" required>
+
+        <label class="sr-only" for="pass-value">Pass value</label>
+        <input type="text" id="pass-value" placeholder="Card Number or ID" autocomplete="off" required>
+
+        <button type="submit" class="btn-primary">Add to Wallet</button>
+      </form>
+    </main>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  
   <script src="app.js"></script>
 </body>
 </html>
