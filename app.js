@@ -421,27 +421,41 @@ function startScannerWithFallback(cameraConfigs, scanConfig) {
   return tryCamera(0, 0);
 }
 
-async function getRearCameraConfigs() {
-  const configs = [];
+function getRearCameraConfigs() {
+  // Start with a facing-mode request so iOS can request permission before
+  // device labels are exposed by enumerateDevices(). Avoid getCameras() here:
+  // calling it first can return no usable labels on iOS Safari.
+  return [
+    { facingMode: 'environment' },
+    { facingMode: { exact: 'environment' } },
+  ];
+}
 
-  try {
-    const cameras = await Html5Qrcode.getCameras();
-    const rearCamera = cameras.find((camera) => /back|rear|environment|world|wide/i.test(camera.label));
-    if (rearCamera) {
-      configs.push(rearCamera.id);
-    }
-  } catch (error) {
-    console.warn('Could not enumerate camera devices:', error);
+function getScannerErrorMessage(error) {
+  switch (error && error.name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+    case 'SecurityError':
+      return 'Camera access was blocked. Allow camera access for this site in iOS Settings, then reload and try again.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'No camera was found on this device.';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'The camera could not start. Close other apps using the camera and try again.';
+    default:
+      return 'Could not open the rear camera. Check that camera access is allowed and try again.';
   }
-
-  configs.push({ facingMode: { exact: 'environment' } });
-  configs.push({ facingMode: 'environment' });
-  return configs;
 }
 
 function handleScannerStart() {
   if (!('mediaDevices' in navigator) || !navigator.mediaDevices?.getUserMedia) {
     showStatus('This browser does not support camera scanning.', 'error');
+    return;
+  }
+
+  if (!window.isSecureContext) {
+    showStatus('Camera access requires a secure connection (HTTPS) or localhost.', 'error');
     return;
   }
 
@@ -483,18 +497,24 @@ function handleScannerStart() {
     aspectRatio: 1.333334,
   };
 
+  // Call start directly from the scan-button gesture. On iOS, requesting
+  // permission before enumerating devices is important because camera labels
+  // can remain hidden until the user grants access.
   readerContainer.classList.remove('hidden');
-  getRearCameraConfigs()
-    .then((cameraConfigs) => startScannerWithFallback(cameraConfigs, scanConfig))
+  scanBtn.disabled = true;
+  startScannerWithFallback(getRearCameraConfigs(), scanConfig)
     .then(() => {
       isScanning = true;
+      scanBtn.disabled = false;
       scanBtn.textContent = '❌ Cancel Scan';
       showStatus('Rear camera is ready. Point it at a card.', 'info');
     })
     .catch((error) => {
       console.error('Rear camera error:', error);
       readerContainer.classList.add('hidden');
-      showStatus('Could not open the rear camera. Check camera permission and try again.', 'error');
+      scanBtn.disabled = false;
+      scanBtn.textContent = '📷 Scan Card';
+      showStatus(getScannerErrorMessage(error), 'error');
     });
 }
 
