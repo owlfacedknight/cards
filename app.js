@@ -362,14 +362,17 @@ function handleScannerStart() {
   if (!html5QrCode) {
     html5QrCode = new Html5Qrcode('reader', {
       formatsToSupport: [
-        Html5QrcodeSupportedFormats.QR_CODE,
         Html5QrcodeSupportedFormats.CODE_128,
         Html5QrcodeSupportedFormats.CODE_39,
         Html5QrcodeSupportedFormats.EAN_13,
         Html5QrcodeSupportedFormats.EAN_8,
         Html5QrcodeSupportedFormats.UPC_A,
         Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.QR_CODE,
       ],
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true,
+      },
     });
   }
 
@@ -393,8 +396,16 @@ function handleScannerStart() {
     { facingMode: 'environment' },
     {
       fps: 10,
-      qrbox: { width: 300, height: 150 },
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        const width = Math.floor(viewfinderWidth * 0.9);
+        const height = Math.min(Math.floor(width / 2), viewfinderHeight);
+        return { width, height };
+      },
       aspectRatio: 1.333334,
+      videoConstraints: {
+        width: { ideal: 1920, min: 1280 },
+        advanced: [{ focusMode: 'continuous' }],
+      },
     },
     (decodedText) => {
       passValueInput.value = decodedText.trim();
