@@ -360,32 +360,15 @@ function getDynamicQrbox(viewfinderWidth, viewfinderHeight) {
 }
 
 function startScannerWithFallback(cameraConfigs, scanConfig) {
-  const resolutions = [
-    { ideal: 1920, min: 960 },
-    { ideal: 1280, min: 720 },
-    { ideal: 960, min: 640 },
-    null,
-  ];
-
-  const tryCamera = (cameraIndex, resolutionIndex) => {
-    const resolution = resolutions[resolutionIndex];
-    const videoConstraints = resolution ? {
-      width: { ideal: resolution.ideal, min: resolution.min },
-      height: {
-        ideal: Math.floor(resolution.ideal * 0.75),
-        min: Math.floor(resolution.min * 0.75),
-      },
-      advanced: [
-        { focusMode: 'continuous' },
-        { exposureMode: 'continuous' },
-        { whiteBalanceMode: 'continuous' },
-      ],
-    } : undefined;
-
-    return html5QrCode.start(cameraConfigs[cameraIndex], {
+  const tryCamera = (cameraIndex) => html5QrCode.start(
+    cameraConfigs[cameraIndex],
+    {
       ...scanConfig,
-      ...(videoConstraints ? { videoConstraints } : {}),
-    }, (decodedText) => {
+      // Keep it intentionally simple for iOS Safari. High resolution and
+      // advanced constraints can be rejected even when the user has granted
+      // permission, so let the browser choose the best supported stream.
+    },
+    (decodedText) => {
       passValueInput.value = decodedText.trim();
       showStatus('Card scanned successfully.', 'success');
       html5QrCode.stop().then(() => {
@@ -395,39 +378,34 @@ function startScannerWithFallback(cameraConfigs, scanConfig) {
       }).catch((error) => {
         console.error('Failed to stop scanner after decoding:', error);
       });
-    }, () => {
+    },
+    () => {
       // Ignore background scan errors while the camera is trying to detect a code.
-    }).then(() => {
-      const runningTrackSettings = html5QrCode.getRunningTrackSettings?.();
-      const facingMode = runningTrackSettings && runningTrackSettings.facingMode;
-      if (facingMode === 'user' || facingMode === 'front') {
-        return html5QrCode.stop().then(() => {
-          throw new Error('The browser selected the front-facing camera.');
-        });
-      }
-    }).catch((error) => {
-      if (resolutionIndex < resolutions.length - 1) {
-        return tryCamera(cameraIndex, resolutionIndex + 1);
-      }
+    }
+  ).then(() => {
+    const runningTrackSettings = html5QrCode.getRunningTrackSettings?.();
+    const facingMode = runningTrackSettings && runningTrackSettings.facingMode;
+    if (facingMode === 'user' || facingMode === 'front') {
+      return html5QrCode.stop().then(() => {
+        throw new Error('The browser selected the front-facing camera.');
+      });
+    }
+  }).catch((error) => {
+    console.error(`Camera configuration ${cameraIndex} failed:`, error);
+    if (cameraIndex < cameraConfigs.length - 1) {
+      return tryCamera(cameraIndex + 1);
+    }
+    throw error;
+  });
 
-      if (cameraIndex < cameraConfigs.length - 1) {
-        return tryCamera(cameraIndex + 1, 0);
-      }
-
-      throw error;
-    });
-  };
-
-  return tryCamera(0, 0);
+  return tryCamera(0);
 }
 
 function getRearCameraConfigs() {
-  // Start with a facing-mode request so iOS can request permission before
-  // device labels are exposed by enumerateDevices(). Avoid getCameras() here:
-  // calling it first can return no usable labels on iOS Safari.
   return [
     { facingMode: 'environment' },
     { facingMode: { exact: 'environment' } },
+    { facingMode: 'user' },
   ];
 }
 
@@ -455,7 +433,7 @@ function handleScannerStart() {
   }
 
   if (!window.isSecureContext) {
-    showStatus('Camera access requires a secure connection (HTTPS) or localhost.', 'error');
+    showStatus('Camera access requires HTTPS or localhost.', 'error');
     return;
   }
 
@@ -497,9 +475,6 @@ function handleScannerStart() {
     aspectRatio: 1.333334,
   };
 
-  // Call start directly from the scan-button gesture. On iOS, requesting
-  // permission before enumerating devices is important because camera labels
-  // can remain hidden until the user grants access.
   readerContainer.classList.remove('hidden');
   scanBtn.disabled = true;
   startScannerWithFallback(getRearCameraConfigs(), scanConfig)
