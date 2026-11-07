@@ -33,7 +33,11 @@ function loadPasses() {
       return [];
     }
 
-    return parsed.filter((pass) => pass && typeof pass.title === 'string' && typeof pass.value === 'string');
+    return parsed.filter(
+      (pass) => pass &&
+        typeof pass.title === 'string' &&
+        typeof pass.value === 'string'
+    );
   } catch (error) {
     console.error('Failed to load wallet passes:', error);
     return [];
@@ -64,7 +68,9 @@ function toggleCode(index) {
 
 function removePass(index) {
   const challenge = Math.random().toString(36).substring(2, 6).toUpperCase();
-  const userInput = window.prompt(`To delete this pass, type this exact code: ${challenge}`);
+  const userInput = window.prompt(
+    `To delete this pass, type this exact code: ${challenge}`
+  );
 
   if (userInput === null) {
     return;
@@ -126,7 +132,10 @@ function createExpandedCard(pass, index) {
   barcodeContainer.id = `barcode-${index}`;
   barcodeContainer.className = 'barcode-container';
 
-  const barcode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const barcode = document.createElementNS(
+    'http://www.w3.org/2000/svg',
+    'svg'
+  );
   barcode.setAttribute('class', 'barcode');
   barcode.setAttribute('data-value', pass.value);
   barcodeContainer.appendChild(barcode);
@@ -182,7 +191,8 @@ function createExpandedCard(pass, index) {
       margin: 5,
     });
   } catch (error) {
-    barcodeContainer.innerHTML = '<p class="error">Invalid barcode data</p>';
+    barcodeContainer.innerHTML =
+      '<p class="error">Invalid barcode data</p>';
   }
 
   try {
@@ -212,7 +222,10 @@ function renderPasses() {
   }
 
   passes.forEach((pass, index) => {
-    const card = expandedIndex === index ? createExpandedCard(pass, index) : createCollapsedCard(pass, index);
+    const card = expandedIndex === index
+      ? createExpandedCard(pass, index)
+      : createCollapsedCard(pass, index);
+
     container.appendChild(card);
   });
 }
@@ -243,7 +256,9 @@ form.addEventListener('submit', (event) => {
   }
 
   const duplicate = passes.some(
-    (pass) => pass.title.toLowerCase() === payload.title.toLowerCase() && pass.value.toLowerCase() === payload.value.toLowerCase()
+    (pass) =>
+      pass.title.toLowerCase() === payload.title.toLowerCase() &&
+      pass.value.toLowerCase() === payload.value.toLowerCase()
   );
 
   if (duplicate) {
@@ -276,7 +291,10 @@ async function refreshApp() {
   }
 
   if (!('serviceWorker' in navigator) || !serviceWorkerRegistration) {
-    showStatus('App refresh is unavailable. Reload the page when you are online.', 'error');
+    showStatus(
+      'App refresh is unavailable. Reload the page when you are online.',
+      'error'
+    );
     return;
   }
 
@@ -295,7 +313,10 @@ async function refreshApp() {
     const installingWorker = serviceWorkerRegistration.installing;
     if (installingWorker) {
       installingWorker.addEventListener('statechange', () => {
-        if (installingWorker.state === 'installed' && activateWaitingWorker(serviceWorkerRegistration)) {
+        if (
+          installingWorker.state === 'installed' &&
+          activateWaitingWorker(serviceWorkerRegistration)
+        ) {
           return;
         }
 
@@ -306,6 +327,7 @@ async function refreshApp() {
           isRefreshing = false;
         }
       });
+
       showStatus('An update is installing…', 'info');
       return;
     }
@@ -314,7 +336,10 @@ async function refreshApp() {
     window.location.reload();
   } catch (error) {
     console.error('Failed to check for app updates:', error);
-    showStatus('Could not check for updates. Check your connection and try again.', 'error');
+    showStatus(
+      'Could not check for updates. Check your connection and try again.',
+      'error'
+    );
     refreshBtn.disabled = false;
     refreshBtn.textContent = '↻ Refresh app';
     isRefreshing = false;
@@ -334,6 +359,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
       .then((registration) => {
         serviceWorkerRegistration = registration;
+
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           if (!newWorker) {
@@ -341,8 +367,14 @@ if ('serviceWorker' in navigator) {
           }
 
           newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              showStatus('A new version is available. Tap Refresh app to install it.', 'info');
+            if (
+              newWorker.state === 'installed' &&
+              navigator.serviceWorker.controller
+            ) {
+              showStatus(
+                'A new version is available. Tap Refresh app to install it.',
+                'info'
+              );
             }
           });
         });
@@ -355,107 +387,107 @@ if ('serviceWorker' in navigator) {
 
 function getDynamicQrbox(viewfinderWidth, viewfinderHeight) {
   const width = Math.min(Math.floor(viewfinderWidth * 0.95), 900);
-  const height = Math.min(Math.floor(width / 3), Math.floor(viewfinderHeight * 0.8));
+  const height = Math.min(
+    Math.floor(width / 3),
+    Math.floor(viewfinderHeight * 0.8)
+  );
   return { width, height };
 }
 
 function startScannerWithFallback(cameraConfigs, scanConfig) {
-  const resolutions = [
-    { ideal: 1920, min: 960 },
-    { ideal: 1280, min: 720 },
-    { ideal: 960, min: 640 },
-    null,
-  ];
+  const tryCamera = (cameraIndex) => {
+    return html5QrCode.start(
+      cameraConfigs[cameraIndex],
+      scanConfig,
+      (decodedText) => {
+        passValueInput.value = decodedText.trim();
+        showStatus('Card scanned successfully.', 'success');
 
-  const tryCamera = (cameraIndex, resolutionIndex) => {
-    const resolution = resolutions[resolutionIndex];
-    const videoConstraints = resolution ? {
-      width: { ideal: resolution.ideal, min: resolution.min },
-      height: {
-        ideal: Math.floor(resolution.ideal * 0.75),
-        min: Math.floor(resolution.min * 0.75),
+        html5QrCode.stop()
+          .then(() => {
+            isScanning = false;
+            readerContainer.classList.add('hidden');
+            scanBtn.disabled = false;
+            scanBtn.textContent = '📷 Scan Card';
+          })
+          .catch((error) => {
+            console.error('Failed to stop scanner after decoding:', error);
+          });
       },
-      advanced: [
-        { focusMode: 'continuous' },
-        { exposureMode: 'continuous' },
-        { whiteBalanceMode: 'continuous' },
-      ],
-    } : undefined;
-
-    return html5QrCode.start(cameraConfigs[cameraIndex], {
-      ...scanConfig,
-      ...(videoConstraints ? { videoConstraints } : {}),
-    }, (decodedText) => {
-      passValueInput.value = decodedText.trim();
-      showStatus('Card scanned successfully.', 'success');
-      html5QrCode.stop().then(() => {
-        isScanning = false;
-        readerContainer.classList.add('hidden');
-        scanBtn.textContent = '📷 Scan Card';
-      }).catch((error) => {
-        console.error('Failed to stop scanner after decoding:', error);
-      });
-    }, () => {
-      // Ignore background scan errors while the camera is trying to detect a code.
-    }).then(() => {
-      const runningTrackSettings = html5QrCode.getRunningTrackSettings?.();
-      const facingMode = runningTrackSettings && runningTrackSettings.facingMode;
-      if (facingMode === 'user' || facingMode === 'front') {
-        return html5QrCode.stop().then(() => {
-          throw new Error('The browser selected the front-facing camera.');
-        });
+      () => {
+        // Ignore background scan errors while the camera is detecting a code.
       }
-    }).catch((error) => {
-      if (resolutionIndex < resolutions.length - 1) {
-        return tryCamera(cameraIndex, resolutionIndex + 1);
-      }
+    ).catch((error) => {
+      console.error(`Camera configuration ${cameraIndex} failed:`, error);
 
       if (cameraIndex < cameraConfigs.length - 1) {
-        return tryCamera(cameraIndex + 1, 0);
+        return tryCamera(cameraIndex + 1);
       }
 
       throw error;
     });
   };
 
-  return tryCamera(0, 0);
+  return tryCamera(0);
 }
 
 function getRearCameraConfigs() {
-  // Start with a facing-mode request so iOS can request permission before
-  // device labels are exposed by enumerateDevices(). Avoid getCameras() here:
-  // calling it first can return no usable labels on iOS Safari.
-  return [
-    { facingMode: 'environment' },
-    { facingMode: { exact: 'environment' } },
-  ];
+  // Avoid enumerating cameras before permission is granted; iOS can hide
+  // camera labels until then. Let the browser select the rear camera.
+  return [{ facingMode: 'environment' }];
 }
 
 function getScannerErrorMessage(error) {
-  switch (error && error.name) {
-    case 'NotAllowedError':
-    case 'PermissionDeniedError':
-    case 'SecurityError':
-      return 'Camera access was blocked. Allow camera access for this site in iOS Settings, then reload and try again.';
-    case 'NotFoundError':
-    case 'DevicesNotFoundError':
-      return 'No camera was found on this device.';
-    case 'NotReadableError':
-    case 'TrackStartError':
-      return 'The camera could not start. Close other apps using the camera and try again.';
-    default:
-      return 'Could not open the rear camera. Check that camera access is allowed and try again.';
+  const name = error?.name || '';
+  const message = typeof error === 'string'
+    ? error
+    : error?.message || '';
+  const details = `${name} ${message}`;
+
+  if (/NotAllowedError|PermissionDeniedError|SecurityError/i.test(details)) {
+    return 'Camera access was blocked. Check this site’s camera permission in iOS Settings and try again.';
   }
+
+  if (/NotFoundError|DevicesNotFoundError/i.test(details)) {
+    return 'No camera was found on this device.';
+  }
+
+  if (/NotReadableError|TrackStartError/i.test(details)) {
+    return 'The camera could not start. Close other apps using the camera and try again.';
+  }
+
+  if (/OverconstrainedError|ConstraintNotSatisfiedError/i.test(details)) {
+    return 'This browser could not select the rear camera. Try opening the site directly in Safari.';
+  }
+
+  const reason = message || name || 'Unknown camera error';
+  return `Could not start the camera: ${reason}`;
 }
 
 function handleScannerStart() {
-  if (!('mediaDevices' in navigator) || !navigator.mediaDevices?.getUserMedia) {
+  if (!navigator.mediaDevices?.getUserMedia) {
     showStatus('This browser does not support camera scanning.', 'error');
     return;
   }
 
   if (!window.isSecureContext) {
-    showStatus('Camera access requires a secure connection (HTTPS) or localhost.', 'error');
+    showStatus('Camera access requires HTTPS or localhost.', 'error');
+    return;
+  }
+
+  if (isScanning) {
+    html5QrCode.stop()
+      .then(() => {
+        isScanning = false;
+        readerContainer.classList.add('hidden');
+        scanBtn.disabled = false;
+        scanBtn.textContent = '📷 Scan Card';
+        showStatus('Scanner cancelled.', 'info');
+      })
+      .catch((error) => {
+        console.error('Failed to stop camera:', error);
+        showStatus('Unable to stop the camera cleanly.', 'error');
+      });
     return;
   }
 
@@ -470,38 +502,20 @@ function handleScannerStart() {
         Html5QrcodeSupportedFormats.UPC_E,
         Html5QrcodeSupportedFormats.QR_CODE,
       ],
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true,
-      },
     });
-  }
-
-  if (isScanning) {
-    html5QrCode.stop()
-      .then(() => {
-        isScanning = false;
-        readerContainer.classList.add('hidden');
-        scanBtn.textContent = '📷 Scan Card';
-        showStatus('Scanner cancelled.', 'info');
-      })
-      .catch((error) => {
-        console.error('Failed to stop camera:', error);
-        showStatus('Unable to stop the camera cleanly.', 'error');
-      });
-    return;
   }
 
   const scanConfig = {
     fps: 8,
-    qrbox: (viewfinderWidth, viewfinderHeight) => getDynamicQrbox(viewfinderWidth, viewfinderHeight),
-    aspectRatio: 1.333334,
+    qrbox: (viewfinderWidth, viewfinderHeight) =>
+      getDynamicQrbox(viewfinderWidth, viewfinderHeight),
   };
 
-  // Call start directly from the scan-button gesture. On iOS, requesting
-  // permission before enumerating devices is important because camera labels
-  // can remain hidden until the user grants access.
+  // Start directly from the button tap. iOS Safari can restrict camera access
+  // when devices are enumerated before the user grants permission.
   readerContainer.classList.remove('hidden');
   scanBtn.disabled = true;
+
   startScannerWithFallback(getRearCameraConfigs(), scanConfig)
     .then(() => {
       isScanning = true;
@@ -510,7 +524,7 @@ function handleScannerStart() {
       showStatus('Rear camera is ready. Point it at a card.', 'info');
     })
     .catch((error) => {
-      console.error('Rear camera error:', error);
+      console.error('Camera startup failed:', error);
       readerContainer.classList.add('hidden');
       scanBtn.disabled = false;
       scanBtn.textContent = '📷 Scan Card';
