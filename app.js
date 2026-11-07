@@ -310,6 +310,14 @@ function startScannerWithFallback(cameraConfigs, scanConfig) {
       }).catch((error) => console.error('Failed to stop scanner after decoding:', error));
     }, () => {
       // Ignore background scan errors while the camera is trying to detect a code.
+    }).then(() => {
+      // Do not silently leave a front-facing camera running if the browser reports it.
+      const facingMode = html5QrCode.getRunningTrackSettings?.().facingMode;
+      if (facingMode === 'user') {
+        return html5QrCode.stop().then(() => {
+          throw new Error('The browser selected the front-facing camera.');
+        });
+      }
     }).catch((error) => {
       if (resolutionIndex < resolutions.length - 1) return tryCamera(cameraIndex, resolutionIndex + 1);
       if (cameraIndex < cameraConfigs.length - 1) return tryCamera(cameraIndex + 1, 0);
@@ -320,9 +328,7 @@ function startScannerWithFallback(cameraConfigs, scanConfig) {
 }
 
 async function getRearCameraConfigs() {
-  // Request the environment camera while this is still in the user's click flow. On iOS,
-  // labels are commonly hidden until permission has been granted. Stop this probe stream
-  // before html5-qrcode opens its own camera stream.
+  // Grant permission first so iOS can reveal camera labels, then stop the temporary stream.
   const probe = await navigator.mediaDevices.getUserMedia({
     audio: false,
     video: { facingMode: { exact: 'environment' } },
@@ -331,13 +337,12 @@ async function getRearCameraConfigs() {
 
   const cameras = await Html5Qrcode.getCameras();
   const rearCamera = cameras.find((camera) => /back|rear|environment|world|wide/i.test(camera.label));
-  if (rearCamera) {
-    // Use the enumerated rear device explicitly; never fall back to an arbitrary camera.
-    return [rearCamera.id];
-  }
 
-  // Fail closed rather than silently opening the front camera on devices with opaque labels.
-  return [{ facingMode: { exact: 'environment' } }];
+  // Try the strict rear-facing constraint first; if that fails, use a positively
+  // identified rear-camera device ID. Never fall back to an arbitrary/default camera.
+  const configs = [{ facingMode: { exact: 'environment' } }];
+  if (rearCamera) configs.push(rearCamera.id);
+  return configs;
 }
 
 function handleScannerStart() {
