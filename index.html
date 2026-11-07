@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Minimal Wallet</title>
-  <!-- Fixed path for GitHub pages -->
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="styles.css">
   <meta name="theme-color" content="#1a1a1a">
@@ -20,7 +19,10 @@
     </div>
 
     <!-- Camera Viewfinder Container -->
-    <div id="reader" class="hidden"></div>
+    <div id="reader-container" class="hidden">
+      <div id="reader"></div>
+      <p class="scan-hint">Hold card 4-6 inches away and let camera focus.</p>
+    </div>
     <button type="button" id="btn-scan" class="btn-scan">📷 Scan Card</button>
 
     <form id="add-pass-form">
