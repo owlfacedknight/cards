@@ -1,55 +1,67 @@
-// 1. Register Service Worker (Fixed path for GitHub Pages)
+// 1. Register Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(err => console.error(err));
   });
 }
 
-// 2. Scanner Logic
+// 2. Scanner Logic (Optimized for 1D Barcodes)
 const scanBtn = document.getElementById('btn-scan');
-const readerDiv = document.getElementById('reader');
+const readerContainer = document.getElementById('reader-container');
 const passValueInput = document.getElementById('pass-value');
 let html5QrCode;
 let isScanning = false;
 
 scanBtn.addEventListener('click', () => {
   if (!html5QrCode) {
-    // Explicitly support common 1D barcodes and QR codes
-    html5QrCode = new Html5Qrcode("reader");
+    // Explicitly define formats to dramatically speed up 1D barcode recognition
+    html5QrCode = new Html5Qrcode("reader", {
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E
+      ]
+    });
   }
 
   if (isScanning) {
-    // Stop scanning
     html5QrCode.stop().then(() => {
       isScanning = false;
-      readerDiv.classList.add('hidden');
+      readerContainer.classList.add('hidden');
       scanBtn.innerHTML = '📷 Scan Card';
     });
   } else {
-    // Start scanning
-    readerDiv.classList.remove('hidden');
+    readerContainer.classList.remove('hidden');
     html5QrCode.start(
       { facingMode: "environment" },
-      // Removed 'qrbox' to scan the entire frame. Much better for wide 1D barcodes.
-      { fps: 15 },
+      {
+        fps: 10,
+        // A wide, short box forces the engine to only check the center, perfect for 1D barcodes
+        qrbox: { width: 300, height: 150 },
+        // Enforcing aspect ratio prevents video stretching which breaks 1D barcode lines
+        aspectRatio: 1.333334 
+      },
       (decodedText) => {
-        // On successful scan
         passValueInput.value = decodedText;
         html5QrCode.stop().then(() => {
           isScanning = false;
-          readerDiv.classList.add('hidden');
+          readerContainer.classList.add('hidden');
           scanBtn.innerHTML = '📷 Scan Card';
         });
       },
       (errorMessage) => {
-        // Ignore background scanning errors
+        // Ignore continuous background scanning errors
       }
     ).then(() => {
       isScanning = true;
       scanBtn.innerHTML = '❌ Cancel Scan';
     }).catch(err => {
       alert("Camera access denied or unavailable.");
-      readerDiv.classList.add('hidden');
+      readerContainer.classList.add('hidden');
     });
   }
 });
