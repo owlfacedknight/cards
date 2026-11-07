@@ -22,10 +22,34 @@ input {
   margin: 0 auto;
 }
 
+header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  min-height: 48px;
+  margin-bottom: 24px;
+}
+
 header h1 {
   text-align: center;
-  margin: 0 0 24px;
+  margin: 0;
   font-size: clamp(2rem, 4vw, 2.5rem);
+}
+
+.btn-refresh {
+  position: absolute;
+  right: 0;
+  width: auto;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f4f4;
+  font-size: 0.85rem;
+}
+
+.btn-refresh:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 
 #wallet-container {
@@ -279,6 +303,17 @@ input::placeholder {
   border: 0;
 }
 
+@media (max-width: 620px) {
+  header {
+    justify-content: flex-start;
+    padding-right: 120px;
+  }
+
+  header h1 {
+    text-align: left;
+  }
+}
+
 @media (max-width: 380px) {
   body {
     padding: 14px;
@@ -286,5 +321,10 @@ input::placeholder {
 
   .button-group {
     flex-direction: column;
+  }
+
+  .btn-refresh {
+    padding: 8px 9px;
+    font-size: 0.78rem;
   }
 }

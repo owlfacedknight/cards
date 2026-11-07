@@ -5,12 +5,16 @@ const statusMessage = document.getElementById('status-message');
 const passTitleInput = document.getElementById('pass-title');
 const passValueInput = document.getElementById('pass-value');
 const scanBtn = document.getElementById('btn-scan');
+const refreshBtn = document.getElementById('btn-refresh');
 const readerContainer = document.getElementById('reader-container');
 
 let passes = loadPasses();
 let expandedIndex = null;
 let html5QrCode;
 let isScanning = false;
+let serviceWorkerRegistration = null;
+let isRefreshing = false;
+let isReloadingForUpdate = false;
 
 function showStatus(message, type = 'info') {
   statusMessage.textContent = message;
@@ -254,6 +258,100 @@ form.addEventListener('submit', (event) => {
   showStatus('Pass added to wallet.', 'success');
   passTitleInput.focus();
 });
+
+function activateWaitingWorker(registration) {
+  if (!registration.waiting) {
+    return false;
+  }
+
+  isReloadingForUpdate = true;
+  registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+  showStatus('Update downloaded. Reloading the wallet…', 'success');
+  return true;
+}
+
+async function refreshApp() {
+  if (isRefreshing) {
+    return;
+  }
+
+  if (!('serviceWorker' in navigator) || !serviceWorkerRegistration) {
+    showStatus('App refresh is unavailable. Reload the page when you are online.', 'error');
+    return;
+  }
+
+  isRefreshing = true;
+  refreshBtn.disabled = true;
+  refreshBtn.textContent = 'Checking…';
+  showStatus('Checking for the latest version…', 'info');
+
+  try {
+    await serviceWorkerRegistration.update();
+
+    if (activateWaitingWorker(serviceWorkerRegistration)) {
+      return;
+    }
+
+    const installingWorker = serviceWorkerRegistration.installing;
+    if (installingWorker) {
+      installingWorker.addEventListener('statechange', () => {
+        if (installingWorker.state === 'installed' && activateWaitingWorker(serviceWorkerRegistration)) {
+          return;
+        }
+
+        if (installingWorker.state === 'redundant' && isRefreshing) {
+          showStatus('The wallet is up to date.', 'success');
+          refreshBtn.disabled = false;
+          refreshBtn.textContent = '↻ Refresh app';
+          isRefreshing = false;
+        }
+      });
+      showStatus('An update is installing…', 'info');
+      return;
+    }
+
+    showStatus('Wallet is up to date. Reloading with the latest files…', 'success');
+    window.location.reload();
+  } catch (error) {
+    console.error('Failed to check for app updates:', error);
+    showStatus('Could not check for updates. Check your connection and try again.', 'error');
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = '↻ Refresh app';
+    isRefreshing = false;
+  }
+}
+
+refreshBtn.addEventListener('click', refreshApp);
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (isReloadingForUpdate) {
+      window.location.reload();
+    }
+  });
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then((registration) => {
+        serviceWorkerRegistration = registration;
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (!newWorker) {
+            return;
+          }
+
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              showStatus('A new version is available. Tap Refresh app to install it.', 'info');
+            }
+          });
+        });
+      })
+      .catch((error) => {
+        console.error('Service worker registration failed:', error);
+      });
+  });
+}
 
 function handleScannerStart() {
   if (!('mediaDevices' in navigator) || !navigator.mediaDevices?.getUserMedia) {
