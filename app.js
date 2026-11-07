@@ -353,6 +353,57 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+function getDynamicQrbox(viewfinderWidth, viewfinderHeight) {
+  const width = Math.max(220, Math.min(Math.floor(viewfinderWidth * 0.95), 900));
+  const height = Math.max(140, Math.min(Math.floor(width / 3), Math.floor(viewfinderHeight * 0.8)));
+  return { width, height };
+}
+
+function startScannerWithFallback(cameraConfig, scanConfig) {
+  const resolutions = [
+    { ideal: 1920, min: 960 },
+    { ideal: 1280, min: 720 },
+    { ideal: 960, min: 640 },
+  ];
+
+  const attempt = (index) => {
+    const videoConstraints = {
+      width: { ideal: resolutions[index].ideal, min: resolutions[index].min },
+      height: { ideal: Math.floor(resolutions[index].ideal * 0.75), min: Math.floor(resolutions[index].min * 0.75) },
+      advanced: [
+        { focusMode: 'continuous' },
+        { exposureMode: 'continuous' },
+        { whiteBalanceMode: 'continuous' },
+      ],
+    };
+
+    return html5QrCode.start(cameraConfig, {
+      ...scanConfig,
+      videoConstraints,
+    }, (decodedText) => {
+      passValueInput.value = decodedText.trim();
+      showStatus('Card scanned successfully.', 'success');
+      html5QrCode.stop().then(() => {
+        isScanning = false;
+        readerContainer.classList.add('hidden');
+        scanBtn.textContent = '📷 Scan Card';
+      }).catch((error) => {
+        console.error('Failed to stop scanner after decoding:', error);
+      });
+    }, () => {
+      // Ignore background scan errors while the camera is trying to detect a code.
+    })
+      .catch((error) => {
+        if (index < resolutions.length - 1) {
+          return attempt(index + 1);
+        }
+        throw error;
+      });
+  };
+
+  return attempt(0);
+}
+
 function handleScannerStart() {
   if (!('mediaDevices' in navigator) || !navigator.mediaDevices?.getUserMedia) {
     showStatus('This browser does not support camera scanning.', 'error');
@@ -391,37 +442,15 @@ function handleScannerStart() {
     return;
   }
 
+  const cameraConfig = { facingMode: 'environment' };
+  const scanConfig = {
+    fps: 8,
+    qrbox: (viewfinderWidth, viewfinderHeight) => getDynamicQrbox(viewfinderWidth, viewfinderHeight),
+    aspectRatio: 1.333334,
+  };
+
   readerContainer.classList.remove('hidden');
-  html5QrCode.start(
-    { facingMode: 'environment' },
-    {
-      fps: 10,
-      qrbox: (viewfinderWidth, viewfinderHeight) => {
-        const width = Math.floor(viewfinderWidth * 0.9);
-        const height = Math.min(Math.floor(width / 2), viewfinderHeight);
-        return { width, height };
-      },
-      aspectRatio: 1.333334,
-      videoConstraints: {
-        width: { ideal: 1920, min: 1280 },
-        advanced: [{ focusMode: 'continuous' }],
-      },
-    },
-    (decodedText) => {
-      passValueInput.value = decodedText.trim();
-      showStatus('Card scanned successfully.', 'success');
-      html5QrCode.stop().then(() => {
-        isScanning = false;
-        readerContainer.classList.add('hidden');
-        scanBtn.textContent = '📷 Scan Card';
-      }).catch((error) => {
-        console.error('Failed to stop scanner after decoding:', error);
-      });
-    },
-    () => {
-      // Ignore background scan errors while the camera is trying to detect a code.
-    }
-  )
+  startScannerWithFallback(cameraConfig, scanConfig)
     .then(() => {
       isScanning = true;
       scanBtn.textContent = '❌ Cancel Scan';
@@ -430,7 +459,7 @@ function handleScannerStart() {
     .catch((error) => {
       console.error('Camera error:', error);
       readerContainer.classList.add('hidden');
-      showStatus('Camera access denied or unavailable.', 'error');
+      showStatus('Camera access denied or unavailable on this device.', 'error');
     });
 }
 
