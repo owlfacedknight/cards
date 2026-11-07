@@ -122,19 +122,25 @@ button {
   background: #d93838;
 }
 
-/* Fixed Scanner Styles */
+/* Scanner Styles */
+#reader-container {
+  margin-bottom: 15px;
+}
 #reader {
   width: 100%;
   border-radius: 8px;
   overflow: hidden;
-  margin-bottom: 15px;
   background: #000;
 }
-/* Ensure the video feed isn't distorted or cropped */
 #reader video {
   width: 100% !important;
   height: auto !important;
-  object-fit: contain !important;
+}
+.scan-hint {
+  text-align: center;
+  font-size: 0.85em;
+  color: #aaa;
+  margin-top: 8px;
 }
 .btn-scan {
   background: #0056b3;
