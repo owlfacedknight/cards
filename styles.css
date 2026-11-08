@@ -1,4 +1,4 @@
-:root {
+const :root {
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #f3f4f6;
@@ -164,21 +164,38 @@ input::placeholder {
   line-height: 1.45;
 }
 
-.status-message.success {
-  color: #86efac;
-}
-
-.status-message.error {
-  color: #fca5a5;
-}
-
-.status-message.info {
-  color: #a1a1aa;
-}
+.status-message.success { color: #86efac; }
+.status-message.error { color: #fca5a5; }
+.status-message.info { color: #a1a1aa; }
 
 .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 12px;
 }
+
+.section-heading h2 { margin: 0; }
+
+.backup-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-secondary {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #34363d;
+  border-radius: 9px;
+  color: #c9cbd2;
+  background: #1b1c21;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.btn-secondary:hover { background: #25262d; }
 
 #wallet-container {
   display: flex;
@@ -218,60 +235,15 @@ input::placeholder {
   background: #202127;
 }
 
-.card-text {
-  display: grid;
-  min-width: 0;
-  gap: 5px;
-}
+.card-text { display: grid; min-width: 0; gap: 5px; }
+.card-title { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.card-preview { overflow: hidden; color: #9ca3af; font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+.card-arrow { margin-left: 14px; color: #858995; font-size: 1.6rem; line-height: 1; }
 
-.card-title {
-  overflow: hidden;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-preview {
-  overflow: hidden;
-  color: #9ca3af;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 0.8rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-arrow {
-  margin-left: 14px;
-  color: #858995;
-  font-size: 1.6rem;
-  line-height: 1;
-}
-
-.pass-card.expanded {
-  padding: 18px;
-}
-
-.expanded-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.expanded-header h3 {
-  margin-bottom: 0;
-  overflow-wrap: anywhere;
-  font-size: 1.1rem;
-}
-
-.icon-button {
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  font-size: 1.4rem;
-}
+.pass-card.expanded { padding: 18px; }
+.expanded-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.expanded-header h3 { margin-bottom: 0; overflow-wrap: anywhere; font-size: 1.1rem; }
+.icon-button { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; font-size: 1.4rem; }
 
 .code-toggle {
   display: grid;
@@ -284,50 +256,12 @@ input::placeholder {
   background: #fff;
 }
 
-.code-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 96px;
-  overflow: hidden;
-  background: #fff;
-}
-
-.code-panel img,
-.code-panel canvas,
-.code-panel svg {
-  max-width: 100%;
-}
-
-.code-panel img,
-.code-panel canvas {
-  height: auto;
-}
-
-.code-panel .barcode {
-  display: block;
-  height: auto;
-}
-
-.code-hint {
-  margin: 9px 0 12px;
-  color: #9ca3af;
-  font-size: 0.76rem;
-  text-align: center;
-}
-
-.pass-code {
-  margin: 0 0 14px;
-  padding: 12px;
-  border-radius: 10px;
-  color: #e5e7eb;
-  background: #121317;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 0.95rem;
-  overflow-wrap: anywhere;
-  text-align: center;
-}
+.code-panel { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 96px; overflow: hidden; background: #fff; }
+.code-panel img, .code-panel canvas, .code-panel svg { max-width: 100%; }
+.code-panel img, .code-panel canvas { height: auto; }
+.code-panel .barcode { display: block; height: auto; }
+.code-hint { margin: 9px 0 12px; color: #9ca3af; font-size: 0.76rem; text-align: center; }
+.pass-code { margin: 0 0 14px; padding: 12px; border-radius: 10px; color: #e5e7eb; background: #121317; font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.95rem; overflow-wrap: anywhere; text-align: center; }
 
 .btn-delete {
   width: 100%;
@@ -338,28 +272,12 @@ input::placeholder {
   background: #2a1c20;
   font-weight: 600;
 }
-
-.btn-delete:hover {
-  background: #382226;
-}
-
-.code-error {
-  padding: 12px;
-  color: #991b1b;
-  font-size: 0.85rem;
-  text-align: center;
-}
-
-.hidden {
-  display: none !important;
-}
+.btn-delete:hover { background: #382226; }
+.code-error { padding: 12px; color: #991b1b; font-size: 0.85rem; text-align: center; }
+.hidden { display: none !important; }
 
 @media (max-width: 480px) {
-  body {
-    padding: 30px 16px;
-  }
-
-  .add-panel {
-    padding: 20px;
-  }
+  body { padding: 30px 16px; }
+  .add-panel { padding: 20px; }
+  .section-heading { align-items: flex-start; flex-direction: column; }
 }

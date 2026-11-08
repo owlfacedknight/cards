@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wallet-cache-v9';
+const CACHE_NAME = 'wallet-cache-v10';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -26,10 +26,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => Promise.all(
       cacheNames
-        .filter(
-          (cacheName) =>
-            cacheName.startsWith('wallet-cache-') &&
-            cacheName !== CACHE_NAME
+        .filter((cacheName) =>
+          cacheName.startsWith('wallet-cache-') && cacheName !== CACHE_NAME
         )
         .map((cacheName) => caches.delete(cacheName))
     )).then(() => self.clients.claim())
@@ -37,27 +35,17 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  if (
-    request.method !== 'GET' ||
-    new URL(request.url).protocol === 'chrome-extension:'
-  ) {
-    return;
-  }
+  if (request.method !== 'GET' || new URL(request.url).protocol === 'chrome-extension:') return;
 
   const requestUrl = new URL(request.url);
   const isSameOrigin = requestUrl.origin === self.location.origin;
   const isNavigation = request.mode === 'navigate';
-
-  if (!isSameOrigin && !EXTERNAL_ASSETS.includes(request.url)) {
-    return;
-  }
+  if (!isSameOrigin && !EXTERNAL_ASSETS.includes(request.url)) return;
 
   if (isSameOrigin || isNavigation) {
     event.respondWith((async () => {
@@ -69,9 +57,7 @@ self.addEventListener('fetch', (event) => {
       } catch (error) {
         const cached = await cache.match(request);
         if (cached) return cached;
-        if (isNavigation) {
-          return (await cache.match('./index.html')) || Response.error();
-        }
+        if (isNavigation) return (await cache.match('./index.html')) || Response.error();
         return Response.error();
       }
     })());

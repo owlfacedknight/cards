@@ -1,43 +1,171 @@
 const STORAGE_KEY = 'wallet_passes';
+const DB_NAME = 'wallet-storage';
+const DB_VERSION = 1;
+const DB_STORE = 'wallet';
+const DB_RECORD_KEY = 'saved-cards';
+
 const form = document.getElementById('add-pass-form');
 const container = document.getElementById('wallet-container');
 const statusMessage = document.getElementById('status-message');
 const passTitleInput = document.getElementById('pass-title');
 const passValueInput = document.getElementById('pass-value');
 const refreshBtn = document.getElementById('btn-refresh');
+const exportBtn = document.getElementById('btn-export');
+const importBtn = document.getElementById('btn-import');
+const backupFileInput = document.getElementById('backup-file');
 
-let passes = loadPasses();
+let passes = [];
 let expandedIndex = null;
 let serviceWorkerRegistration = null;
 let isRefreshing = false;
 let isReloadingForUpdate = false;
+let databasePromise;
 
 function showStatus(message, type = 'info') {
   statusMessage.textContent = message;
   statusMessage.className = `status-message ${type}`;
 }
 
-function loadPasses() {
+function isValidPasses(value) {
+  return Array.isArray(value) && value.every((pass) =>
+    pass && typeof pass.title === 'string' && typeof pass.value === 'string'
+  );
+}
+
+function readLegacyPasses() {
   try {
-    const storedPasses = localStorage.getItem(STORAGE_KEY);
-    if (!storedPasses) return [];
-
-    const parsed = JSON.parse(storedPasses);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter(
-      (pass) => pass &&
-        typeof pass.title === 'string' &&
-        typeof pass.value === 'string'
-    );
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed)
+      ? parsed.filter((pass) => pass && typeof pass.title === 'string' && typeof pass.value === 'string')
+      : [];
   } catch (error) {
-    console.error('Failed to load wallet cards:', error);
+    console.warn('Could not read legacy wallet storage:', error);
     return [];
   }
 }
 
-function persistPasses() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(passes));
+function openDatabase() {
+  if (!('indexedDB' in window)) {
+    return Promise.reject(new Error('IndexedDB is unavailable in this browser.'));
+  }
+  if (databasePromise) return databasePromise;
+
+  databasePromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(DB_STORE)) {
+        database.createObjectStore(DB_STORE, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Could not open saved-card storage.'));
+    request.onblocked = () => reject(new Error('Saved-card storage upgrade is blocked by another open app tab.'));
+  });
+  return databasePromise;
+}
+
+async function readDatabasePasses() {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(DB_STORE, 'readonly');
+    const request = transaction.objectStore(DB_STORE).get(DB_RECORD_KEY);
+    request.onsuccess = () => {
+      const record = request.result;
+      if (!record) {
+        resolve(null);
+      } else if (isValidPasses(record.cards)) {
+        resolve(record.cards);
+      } else {
+        reject(new Error('Saved-card data in IndexedDB is invalid.'));
+      }
+    };
+    request.onerror = () => reject(request.error || new Error('Could not read saved cards.'));
+  });
+}
+
+async function writeDatabasePasses(cards) {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(DB_STORE, 'readwrite');
+    transaction.objectStore(DB_STORE).put({ id: DB_RECORD_KEY, cards });
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('Could not save cards.'));
+    transaction.onabort = () => reject(transaction.error || new Error('Saving cards was interrupted.'));
+  });
+}
+
+async function requestPersistentStorage() {
+  try {
+    if (navigator.storage?.persist) {
+      return await navigator.storage.persist();
+    }
+  } catch (error) {
+    console.info('Persistent storage request was not granted:', error);
+  }
+  return false;
+}
+
+async function initializeStorage() {
+  try {
+    const storedCards = await readDatabasePasses();
+    if (storedCards !== null) {
+      passes = storedCards;
+    } else {
+      // Migrate existing cards from the previous localStorage-based version.
+      passes = readLegacyPasses();
+      await writeDatabasePasses(passes);
+    }
+
+    // Keep a compatibility copy so data can still be recovered if IndexedDB
+    // is unavailable in a later browser version.
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(passes));
+    } catch (error) {
+      console.warn('Could not update the legacy storage copy:', error);
+    }
+
+    const persistent = await requestPersistentStorage();
+    renderPasses();
+    showStatus(
+      persistent
+        ? 'Cards are saved on this device.'
+        : 'Cards are saved on this device. Export a backup to protect against browser data removal.',
+      'info'
+    );
+  } catch (error) {
+    console.error('Persistent storage initialization failed:', error);
+    passes = readLegacyPasses();
+    renderPasses();
+    showStatus(
+      'Device storage is unavailable. Cards may only be saved temporarily; export a backup.',
+      'error'
+    );
+  }
+}
+
+async function persistPasses() {
+  try {
+    await writeDatabasePasses(passes);
+  } catch (error) {
+    console.error('Could not save cards to IndexedDB:', error);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(passes));
+      showStatus('Saved with browser fallback storage. Export a backup to be safe.', 'error');
+      return;
+    } catch (fallbackError) {
+      console.error('Could not save cards to localStorage either:', fallbackError);
+      throw new Error('Could not save cards on this device. Export or copy your card details before leaving.');
+    }
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(passes));
+  } catch (error) {
+    console.warn('Could not update legacy storage copy:', error);
+  }
 }
 
 function toggleCard(index) {
@@ -55,26 +183,22 @@ function toggleCode(index) {
   qr.classList.toggle('hidden', showBarcode);
 }
 
-function removePass(index) {
-  const challenge = Math.random().toString(36).substring(2, 6).toUpperCase();
-  const userInput = window.prompt(
-    `To delete this pass, type this exact code: ${challenge}`
-  );
+async function removePass(index) {
+  const title = passes[index]?.title || 'this card';
+  if (!window.confirm(`Remove “${title}” from your wallet?`)) return;
 
-  if (userInput === null) {
-    return;
-  }
-
-  if (userInput.trim().toUpperCase() !== challenge) {
-    showStatus('Incorrect code. Deletion cancelled.', 'error');
-    return;
-  }
-
-  passes.splice(index, 1);
+  const updatedPasses = passes.filter((_, passIndex) => passIndex !== index);
+  const previousPasses = passes;
+  passes = updatedPasses;
   expandedIndex = null;
-  persistPasses();
-  renderPasses();
-  showStatus('Card removed.', 'success');
+  try {
+    await persistPasses();
+    renderPasses();
+    showStatus('Card removed.', 'success');
+  } catch (error) {
+    passes = previousPasses;
+    showStatus(error.message, 'error');
+  }
 }
 
 function createCollapsedCard(pass, index) {
@@ -129,12 +253,8 @@ function createExpandedCard(pass, index) {
 
   const barcodeContainer = document.createElement('div');
   barcodeContainer.id = `barcode-${index}`;
-  barcodeContainer.className = 'barcode-container';
-
-  const barcode = document.createElementNS(
-    'http://www.w3.org/2000/svg',
-    'svg'
-  );
+  barcodeContainer.className = 'code-panel';
+  const barcode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   barcode.setAttribute('class', 'barcode');
   barcodeContainer.appendChild(barcode);
 
@@ -172,8 +292,8 @@ function createExpandedCard(pass, index) {
       margin: 8,
     });
   } catch (error) {
-    barcodeContainer.innerHTML =
-      '<p class="error">Invalid barcode data</p>';
+    barcodeContainer.textContent = 'This value cannot be displayed as a barcode.';
+    barcodeContainer.classList.add('code-error');
   }
 
   try {
@@ -207,51 +327,115 @@ function renderPasses() {
     const card = expandedIndex === index
       ? createExpandedCard(pass, index)
       : createCollapsedCard(pass, index);
-
     container.appendChild(card);
   });
 }
 
-form.addEventListener('submit', (event) => {
+form.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const title = passTitleInput.value.trim();
   const value = passValueInput.value.trim();
-
   if (!title || !value) {
     showStatus('Enter both a card name and number.', 'error');
     (!title ? passTitleInput : passValueInput).focus();
     return;
   }
-
   if (title.length > 80 || value.length > 500) {
     showStatus('Card name or number is too long.', 'error');
     return;
   }
-
-  const duplicate = passes.some(
-    (pass) =>
-      pass.title.toLowerCase() === payload.title.toLowerCase() &&
-      pass.value.toLowerCase() === payload.value.toLowerCase()
+  const duplicate = passes.some((pass) =>
+    pass.title.toLowerCase() === title.toLowerCase() &&
+    pass.value.toLowerCase() === value.toLowerCase()
   );
-
   if (duplicate) {
     showStatus('That card is already saved.', 'error');
     return;
   }
 
-  passes.push({ title, value });
-  persistPasses();
-  expandedIndex = passes.length - 1;
-  form.reset();
-  renderPasses();
-  showStatus('Card added to your wallet.', 'success');
-  passTitleInput.focus();
+  const previousPasses = passes;
+  passes = [...passes, { title, value }];
+  try {
+    await persistPasses();
+    expandedIndex = passes.length - 1;
+    form.reset();
+    renderPasses();
+    showStatus('Card added and saved on this device.', 'success');
+    passTitleInput.focus();
+  } catch (error) {
+    passes = previousPasses;
+    showStatus(error.message, 'error');
+  }
+});
+
+function exportBackup() {
+  const backup = {
+    format: 'cards-wallet-backup',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    cards: passes,
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `my-wallet-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showStatus('Backup file exported. Store it somewhere safe.', 'success');
+}
+
+async function importBackup(file) {
+  try {
+    const parsed = JSON.parse(await file.text());
+    const importedCards = Array.isArray(parsed) ? parsed : parsed?.cards;
+    if (!isValidPasses(importedCards)) {
+      throw new Error('That file does not contain a valid wallet backup.');
+    }
+
+    const normalized = importedCards.map((pass) => ({
+      title: pass.title.trim(),
+      value: pass.value.trim(),
+    })).filter((pass) => pass.title && pass.value);
+    if (normalized.length !== importedCards.length) {
+      throw new Error('The backup contains a card with an empty name or number. No cards were imported.');
+    }
+
+    if (!window.confirm(`Import ${normalized.length} cards? This replaces the cards currently on this device.`)) {
+      return;
+    }
+
+    const previousPasses = passes;
+    passes = normalized;
+    try {
+      await persistPasses();
+    } catch (error) {
+      passes = previousPasses;
+      throw error;
+    }
+    expandedIndex = null;
+    renderPasses();
+    showStatus(`${passes.length} cards restored from backup.`, 'success');
+  } catch (error) {
+    console.error('Could not import wallet backup:', error);
+    showStatus(error.message || 'Could not read that backup file.', 'error');
+  } finally {
+    backupFileInput.value = '';
+  }
+}
+
+exportBtn.addEventListener('click', exportBackup);
+importBtn.addEventListener('click', () => backupFileInput.click());
+backupFileInput.addEventListener('change', () => {
+  const file = backupFileInput.files?.[0];
+  if (file) importBackup(file);
 });
 
 function activateWaitingWorker(registration) {
   if (!registration.waiting) return false;
-
   isReloadingForUpdate = true;
   registration.waiting.postMessage({ type: 'SKIP_WAITING' });
   showStatus('Update ready. Reloading…', 'info');
@@ -259,22 +443,15 @@ function activateWaitingWorker(registration) {
 }
 
 async function refreshApp() {
-  if (isRefreshing) {
-    return;
-  }
-
-  if (!('serviceWorker' in navigator) || !serviceWorkerRegistration) {
-    showStatus(
-      'App refresh is unavailable. Reload the page when you are online.',
-      'error'
-    );
+  if (isRefreshing) return;
+  if (!serviceWorkerRegistration) {
+    showStatus('Update check is not available right now.', 'error');
     return;
   }
 
   isRefreshing = true;
   refreshBtn.disabled = true;
   showStatus('Checking for updates…', 'info');
-
   try {
     await serviceWorkerRegistration.update();
     if (activateWaitingWorker(serviceWorkerRegistration)) return;
@@ -282,21 +459,14 @@ async function refreshApp() {
     const installingWorker = serviceWorkerRegistration.installing;
     if (installingWorker) {
       installingWorker.addEventListener('statechange', () => {
-        if (
-          installingWorker.state === 'installed' &&
-          activateWaitingWorker(serviceWorkerRegistration)
-        ) {
-          return;
-        }
-
+        if (installingWorker.state === 'installed' && activateWaitingWorker(serviceWorkerRegistration)) return;
         if (installingWorker.state === 'redundant' && isRefreshing) {
           showStatus('You have the latest version.', 'success');
           refreshBtn.disabled = false;
           isRefreshing = false;
         }
       });
-
-      showStatus('An update is installing…', 'info');
+      showStatus('Update is installing…', 'info');
       return;
     }
 
@@ -304,11 +474,8 @@ async function refreshApp() {
     refreshBtn.disabled = false;
     isRefreshing = false;
   } catch (error) {
-    console.error('Failed to check for app updates:', error);
-    showStatus(
-      'Could not check for updates. Check your connection and try again.',
-      'error'
-    );
+    console.error('Failed to check for updates:', error);
+    showStatus('Could not check for updates. Try again when online.', 'error');
     refreshBtn.disabled = false;
     isRefreshing = false;
   }
@@ -325,20 +492,12 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
       .then((registration) => {
         serviceWorkerRegistration = registration;
-
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           if (!newWorker) return;
-
           newWorker.addEventListener('statechange', () => {
-            if (
-              newWorker.state === 'installed' &&
-              navigator.serviceWorker.controller
-            ) {
-              showStatus(
-                'A new version is available. Tap Refresh app to install it.',
-                'info'
-              );
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              showStatus('A new version is available. Tap ↻ to update.', 'info');
             }
           });
         });
@@ -347,152 +506,4 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-function getDynamicQrbox(viewfinderWidth, viewfinderHeight) {
-  const width = Math.min(Math.floor(viewfinderWidth * 0.95), 900);
-  const height = Math.min(
-    Math.floor(width / 3),
-    Math.floor(viewfinderHeight * 0.8)
-  );
-  return { width, height };
-}
-
-function startScannerWithFallback(cameraConfigs, scanConfig) {
-  const tryCamera = (cameraIndex) => {
-    return html5QrCode.start(
-      cameraConfigs[cameraIndex],
-      scanConfig,
-      (decodedText) => {
-        passValueInput.value = decodedText.trim();
-        showStatus('Card scanned successfully.', 'success');
-
-        html5QrCode.stop()
-          .then(() => {
-            isScanning = false;
-            readerContainer.classList.add('hidden');
-            scanBtn.disabled = false;
-            scanBtn.textContent = '📷 Scan Card';
-          })
-          .catch((error) => {
-            console.error('Failed to stop scanner after decoding:', error);
-          });
-      },
-      () => {
-        // Ignore background scan errors while the camera is detecting a code.
-      }
-    ).catch((error) => {
-      console.error(`Camera configuration ${cameraIndex} failed:`, error);
-
-      if (cameraIndex < cameraConfigs.length - 1) {
-        return tryCamera(cameraIndex + 1);
-      }
-
-      throw error;
-    });
-  };
-
-  return tryCamera(0);
-}
-
-function getRearCameraConfigs() {
-  // Avoid enumerating cameras before permission is granted; iOS can hide
-  // camera labels until then. Let the browser select the rear camera.
-  return [{ facingMode: 'environment' }];
-}
-
-function getScannerErrorMessage(error) {
-  const name = error?.name || '';
-  const message = typeof error === 'string'
-    ? error
-    : error?.message || '';
-  const details = `${name} ${message}`;
-
-  if (/NotAllowedError|PermissionDeniedError|SecurityError/i.test(details)) {
-    return 'Camera access was blocked. Check this site’s camera permission in iOS Settings and try again.';
-  }
-
-  if (/NotFoundError|DevicesNotFoundError/i.test(details)) {
-    return 'No camera was found on this device.';
-  }
-
-  if (/NotReadableError|TrackStartError/i.test(details)) {
-    return 'The camera could not start. Close other apps using the camera and try again.';
-  }
-
-  if (/OverconstrainedError|ConstraintNotSatisfiedError/i.test(details)) {
-    return 'This browser could not select the rear camera. Try opening the site directly in Safari.';
-  }
-
-  const reason = message || name || 'Unknown camera error';
-  return `Could not start the camera: ${reason}`;
-}
-
-function handleScannerStart() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    showStatus('This browser does not support camera scanning.', 'error');
-    return;
-  }
-
-  if (!window.isSecureContext) {
-    showStatus('Camera access requires HTTPS or localhost.', 'error');
-    return;
-  }
-
-  if (isScanning) {
-    html5QrCode.stop()
-      .then(() => {
-        isScanning = false;
-        readerContainer.classList.add('hidden');
-        scanBtn.disabled = false;
-        scanBtn.textContent = '📷 Scan Card';
-        showStatus('Scanner cancelled.', 'info');
-      })
-      .catch((error) => {
-        console.error('Failed to stop camera:', error);
-        showStatus('Unable to stop the camera cleanly.', 'error');
-      });
-    return;
-  }
-
-  if (!html5QrCode) {
-    html5QrCode = new Html5Qrcode('reader', {
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.QR_CODE,
-      ],
-    });
-  }
-
-  const scanConfig = {
-    fps: 8,
-    qrbox: (viewfinderWidth, viewfinderHeight) =>
-      getDynamicQrbox(viewfinderWidth, viewfinderHeight),
-  };
-
-  // Start directly from the button tap. iOS Safari can restrict camera access
-  // when devices are enumerated before the user grants permission.
-  readerContainer.classList.remove('hidden');
-  scanBtn.disabled = true;
-
-  startScannerWithFallback(getRearCameraConfigs(), scanConfig)
-    .then(() => {
-      isScanning = true;
-      scanBtn.disabled = false;
-      scanBtn.textContent = '❌ Cancel Scan';
-      showStatus('Rear camera is ready. Point it at a card.', 'info');
-    })
-    .catch((error) => {
-      console.error('Camera startup failed:', error);
-      readerContainer.classList.add('hidden');
-      scanBtn.disabled = false;
-      scanBtn.textContent = '📷 Scan Card';
-      showStatus(getScannerErrorMessage(error), 'error');
-    });
-}
-
-scanBtn.addEventListener('click', handleScannerStart);
-renderPasses();
+initializeStorage();
