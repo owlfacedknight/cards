@@ -4,14 +4,10 @@ const container = document.getElementById('wallet-container');
 const statusMessage = document.getElementById('status-message');
 const passTitleInput = document.getElementById('pass-title');
 const passValueInput = document.getElementById('pass-value');
-const scanBtn = document.getElementById('btn-scan');
 const refreshBtn = document.getElementById('btn-refresh');
-const readerContainer = document.getElementById('reader-container');
 
 let passes = loadPasses();
 let expandedIndex = null;
-let html5QrCode;
-let isScanning = false;
 let serviceWorkerRegistration = null;
 let isRefreshing = false;
 let isReloadingForUpdate = false;
@@ -24,18 +20,16 @@ function showStatus(message, type = 'info') {
 function loadPasses() {
   try {
     const storedPasses = localStorage.getItem(STORAGE_KEY);
-    if (!storedPasses) {
-      return [];
-    }
+    if (!storedPasses) return [];
 
     const parsed = JSON.parse(storedPasses);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
+    if (!Array.isArray(parsed)) return [];
 
-    return parsed.filter((pass) => pass && typeof pass.title === 'string' && typeof pass.value === 'string');
+    return parsed.filter((pass) =>
+      pass && typeof pass.title === 'string' && typeof pass.value === 'string'
+    );
   } catch (error) {
-    console.error('Failed to load wallet passes:', error);
+    console.error('Failed to load wallet cards:', error);
     return [];
   }
 }
@@ -50,62 +44,50 @@ function toggleCard(index) {
 }
 
 function toggleCode(index) {
-  const barcodeEl = document.getElementById(`barcode-${index}`);
-  const qrEl = document.getElementById(`qr-${index}`);
+  const barcode = document.getElementById(`barcode-${index}`);
+  const qr = document.getElementById(`qr-${index}`);
+  if (!barcode || !qr) return;
 
-  if (!barcodeEl || !qrEl) {
-    return;
-  }
-
-  const showBarcode = barcodeEl.classList.contains('hidden');
-  barcodeEl.classList.toggle('hidden', !showBarcode);
-  qrEl.classList.toggle('hidden', showBarcode);
+  const showBarcode = barcode.classList.contains('hidden');
+  barcode.classList.toggle('hidden', !showBarcode);
+  qr.classList.toggle('hidden', showBarcode);
 }
 
 function removePass(index) {
-  const challenge = Math.random().toString(36).substring(2, 6).toUpperCase();
-  const userInput = window.prompt(`To delete this pass, type this exact code: ${challenge}`);
-
-  if (userInput === null) {
-    return;
-  }
-
-  if (userInput.trim().toUpperCase() !== challenge) {
-    showStatus('Incorrect code. Deletion cancelled.', 'error');
-    return;
-  }
+  const title = passes[index]?.title || 'this card';
+  if (!window.confirm(`Remove “${title}” from your wallet?`)) return;
 
   passes.splice(index, 1);
   expandedIndex = null;
   persistPasses();
   renderPasses();
-  showStatus('Pass deleted.', 'success');
+  showStatus('Card removed.', 'success');
 }
 
 function createCollapsedCard(pass, index) {
-  const card = document.createElement('div');
+  const card = document.createElement('button');
+  card.type = 'button';
   card.className = 'pass-card collapsed';
-  card.setAttribute('role', 'button');
-  card.setAttribute('tabindex', '0');
+  card.setAttribute('aria-expanded', 'false');
+  card.addEventListener('click', () => toggleCard(index));
 
-  const icon = document.createElement('div');
-  icon.className = 'card-icon';
-  icon.textContent = '💳';
-
-  const title = document.createElement('h3');
+  const title = document.createElement('span');
+  title.className = 'card-title';
   title.textContent = pass.title;
 
-  card.append(icon, title);
+  const number = document.createElement('span');
+  number.className = 'card-preview';
+  number.textContent = pass.value;
 
-  const activate = () => toggleCard(index);
-  card.addEventListener('click', activate);
-  card.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      activate();
-    }
-  });
+  const arrow = document.createElement('span');
+  arrow.className = 'card-arrow';
+  arrow.setAttribute('aria-hidden', 'true');
+  arrow.textContent = '›';
 
+  const text = document.createElement('span');
+  text.className = 'card-text';
+  text.append(title, number);
+  card.append(text, arrow);
   return card;
 }
 
@@ -113,210 +95,186 @@ function createExpandedCard(pass, index) {
   const card = document.createElement('article');
   card.className = 'pass-card expanded';
 
+  const header = document.createElement('div');
+  header.className = 'expanded-header';
+
   const title = document.createElement('h3');
   title.textContent = pass.title;
 
-  const codeToggle = document.createElement('div');
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'icon-button';
+  closeButton.setAttribute('aria-label', 'Close card details');
+  closeButton.textContent = '×';
+  closeButton.addEventListener('click', () => toggleCard(index));
+  header.append(title, closeButton);
+
+  const codeToggle = document.createElement('button');
+  codeToggle.type = 'button';
   codeToggle.className = 'code-toggle';
-  codeToggle.setAttribute('role', 'button');
-  codeToggle.setAttribute('tabindex', '0');
-  codeToggle.setAttribute('aria-label', 'Toggle code display');
+  codeToggle.setAttribute('aria-label', 'Switch between barcode and QR code');
 
   const barcodeContainer = document.createElement('div');
   barcodeContainer.id = `barcode-${index}`;
-  barcodeContainer.className = 'barcode-container';
-
+  barcodeContainer.className = 'code-panel';
   const barcode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   barcode.setAttribute('class', 'barcode');
-  barcode.setAttribute('data-value', pass.value);
   barcodeContainer.appendChild(barcode);
 
   const qrContainer = document.createElement('div');
   qrContainer.id = `qr-${index}`;
-  qrContainer.className = 'qr-container hidden';
+  qrContainer.className = 'code-panel hidden';
 
-  const tapHint = document.createElement('p');
-  tapHint.className = 'tap-hint';
-  tapHint.textContent = 'Tap code to switch (Barcode / QR)';
+  codeToggle.append(barcodeContainer, qrContainer);
+  codeToggle.addEventListener('click', () => toggleCode(index));
 
-  codeToggle.append(barcodeContainer, qrContainer, tapHint);
+  const codeHint = document.createElement('p');
+  codeHint.className = 'code-hint';
+  codeHint.textContent = 'Tap the code to switch between barcode and QR';
 
-  const passCode = document.createElement('div');
+  const passCode = document.createElement('p');
   passCode.className = 'pass-code';
   passCode.textContent = pass.value;
-
-  const buttonGroup = document.createElement('div');
-  buttonGroup.className = 'button-group';
-
-  const closeButton = document.createElement('button');
-  closeButton.type = 'button';
-  closeButton.className = 'btn-close';
-  closeButton.textContent = 'Close';
-  closeButton.addEventListener('click', () => toggleCard(index));
 
   const deleteButton = document.createElement('button');
   deleteButton.type = 'button';
   deleteButton.className = 'btn-delete';
-  deleteButton.textContent = 'Delete';
+  deleteButton.textContent = 'Remove card';
   deleteButton.addEventListener('click', () => removePass(index));
 
-  buttonGroup.append(closeButton, deleteButton);
-  card.append(title, codeToggle, passCode, buttonGroup);
-
-  codeToggle.addEventListener('click', () => toggleCode(index));
-  codeToggle.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      toggleCode(index);
-    }
-  });
+  card.append(header, codeToggle, codeHint, passCode, deleteButton);
 
   try {
     JsBarcode(barcode, pass.value, {
       format: 'CODE128',
       width: 2,
-      height: 60,
+      height: 64,
       displayValue: false,
       background: '#ffffff',
-      lineColor: '#000000',
-      margin: 5,
+      lineColor: '#111827',
+      margin: 8,
     });
   } catch (error) {
-    barcodeContainer.innerHTML = '<p class="error">Invalid barcode data</p>';
+    barcodeContainer.textContent = 'This value cannot be displayed as a barcode.';
+    barcodeContainer.classList.add('code-error');
   }
 
   try {
     new QRCode(qrContainer, {
       text: pass.value,
-      width: 120,
-      height: 120,
-      colorDark: '#000000',
+      width: 160,
+      height: 160,
+      colorDark: '#111827',
       colorLight: '#ffffff',
     });
   } catch (error) {
-    qrContainer.innerHTML = '<p class="error">Invalid QR data</p>';
+    qrContainer.textContent = 'Could not create a QR code.';
+    qrContainer.classList.add('code-error');
   }
 
   return card;
 }
 
 function renderPasses() {
-  container.innerHTML = '';
+  container.replaceChildren();
 
   if (passes.length === 0) {
-    const emptyState = document.createElement('p');
+    const emptyState = document.createElement('div');
     emptyState.className = 'empty-state';
-    emptyState.textContent = 'No cards saved yet. Add one to get started.';
+    emptyState.textContent = 'Your saved cards will appear here.';
     container.appendChild(emptyState);
     return;
   }
 
   passes.forEach((pass, index) => {
-    const card = expandedIndex === index ? createExpandedCard(pass, index) : createCollapsedCard(pass, index);
+    const card = expandedIndex === index
+      ? createExpandedCard(pass, index)
+      : createCollapsedCard(pass, index);
     container.appendChild(card);
   });
-}
-
-function validateForm() {
-  const title = passTitleInput.value.trim();
-  const value = passValueInput.value.trim();
-
-  if (!title || !value) {
-    showStatus('Please add both a pass name and a value.', 'error');
-    return null;
-  }
-
-  if (title.length > 80 || value.length > 500) {
-    showStatus('Your pass title or value is too long.', 'error');
-    return null;
-  }
-
-  return { title, value };
 }
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
 
-  const payload = validateForm();
-  if (!payload) {
+  const title = passTitleInput.value.trim();
+  const value = passValueInput.value.trim();
+
+  if (!title || !value) {
+    showStatus('Enter both a card name and number.', 'error');
+    (!title ? passTitleInput : passValueInput).focus();
     return;
   }
 
-  const duplicate = passes.some(
-    (pass) => pass.title.toLowerCase() === payload.title.toLowerCase() && pass.value.toLowerCase() === payload.value.toLowerCase()
+  if (title.length > 80 || value.length > 500) {
+    showStatus('Card name or number is too long.', 'error');
+    return;
+  }
+
+  const duplicate = passes.some((pass) =>
+    pass.title.toLowerCase() === title.toLowerCase() &&
+    pass.value.toLowerCase() === value.toLowerCase()
   );
 
   if (duplicate) {
-    showStatus('This pass already exists in your wallet.', 'error');
+    showStatus('That card is already saved.', 'error');
     return;
   }
 
-  passes.push({ title: payload.title, value: payload.value });
+  passes.push({ title, value });
   persistPasses();
+  expandedIndex = passes.length - 1;
   form.reset();
   renderPasses();
-  showStatus('Pass added to wallet.', 'success');
+  showStatus('Card added to your wallet.', 'success');
   passTitleInput.focus();
 });
 
 function activateWaitingWorker(registration) {
-  if (!registration.waiting) {
-    return false;
-  }
+  if (!registration.waiting) return false;
 
   isReloadingForUpdate = true;
   registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-  showStatus('Update downloaded. Reloading the wallet…', 'success');
+  showStatus('Update ready. Reloading…', 'info');
   return true;
 }
 
 async function refreshApp() {
-  if (isRefreshing) {
-    return;
-  }
-
-  if (!('serviceWorker' in navigator) || !serviceWorkerRegistration) {
-    showStatus('App refresh is unavailable. Reload the page when you are online.', 'error');
+  if (isRefreshing) return;
+  if (!serviceWorkerRegistration) {
+    showStatus('Update check is not available right now.', 'error');
     return;
   }
 
   isRefreshing = true;
   refreshBtn.disabled = true;
-  refreshBtn.textContent = 'Checking…';
-  showStatus('Checking for the latest version…', 'info');
+  showStatus('Checking for updates…', 'info');
 
   try {
     await serviceWorkerRegistration.update();
-
-    if (activateWaitingWorker(serviceWorkerRegistration)) {
-      return;
-    }
+    if (activateWaitingWorker(serviceWorkerRegistration)) return;
 
     const installingWorker = serviceWorkerRegistration.installing;
     if (installingWorker) {
       installingWorker.addEventListener('statechange', () => {
-        if (installingWorker.state === 'installed' && activateWaitingWorker(serviceWorkerRegistration)) {
-          return;
-        }
-
+        if (installingWorker.state === 'installed' && activateWaitingWorker(serviceWorkerRegistration)) return;
         if (installingWorker.state === 'redundant' && isRefreshing) {
-          showStatus('The wallet is up to date.', 'success');
+          showStatus('You have the latest version.', 'success');
           refreshBtn.disabled = false;
-          refreshBtn.textContent = '↻ Refresh app';
           isRefreshing = false;
         }
       });
-      showStatus('An update is installing…', 'info');
+      showStatus('Update is installing…', 'info');
       return;
     }
 
-    showStatus('Wallet is up to date. Reloading with the latest files…', 'success');
-    window.location.reload();
-  } catch (error) {
-    console.error('Failed to check for app updates:', error);
-    showStatus('Could not check for updates. Check your connection and try again.', 'error');
+    showStatus('You have the latest version.', 'success');
     refreshBtn.disabled = false;
-    refreshBtn.textContent = '↻ Refresh app';
+    isRefreshing = false;
+  } catch (error) {
+    console.error('Failed to check for updates:', error);
+    showStatus('Could not check for updates. Try again when online.', 'error');
+    refreshBtn.disabled = false;
     isRefreshing = false;
   }
 }
@@ -325,9 +283,7 @@ refreshBtn.addEventListener('click', refreshApp);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (isReloadingForUpdate) {
-      window.location.reload();
-    }
+    if (isReloadingForUpdate) window.location.reload();
   });
 
   window.addEventListener('load', () => {
@@ -336,163 +292,17 @@ if ('serviceWorker' in navigator) {
         serviceWorkerRegistration = registration;
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
-          if (!newWorker) {
-            return;
-          }
+          if (!newWorker) return;
 
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              showStatus('A new version is available. Tap Refresh app to install it.', 'info');
+              showStatus('A new version is available. Tap ↻ to update.', 'info');
             }
           });
         });
       })
-      .catch((error) => {
-        console.error('Service worker registration failed:', error);
-      });
+      .catch((error) => console.error('Service worker registration failed:', error));
   });
 }
 
-function getDynamicQrbox(viewfinderWidth, viewfinderHeight) {
-  const width = Math.min(Math.floor(viewfinderWidth * 0.95), 900);
-  const height = Math.min(Math.floor(width / 3), Math.floor(viewfinderHeight * 0.8));
-  return { width, height };
-}
-
-function startScannerWithFallback(cameraConfigs, scanConfig) {
-  const tryCamera = (cameraIndex) => html5QrCode.start(
-    cameraConfigs[cameraIndex],
-    {
-      ...scanConfig,
-      // Keep it intentionally simple for iOS Safari. High resolution and
-      // advanced constraints can be rejected even when the user has granted
-      // permission, so let the browser choose the best supported stream.
-    },
-    (decodedText) => {
-      passValueInput.value = decodedText.trim();
-      showStatus('Card scanned successfully.', 'success');
-      html5QrCode.stop().then(() => {
-        isScanning = false;
-        readerContainer.classList.add('hidden');
-        scanBtn.textContent = '📷 Scan Card';
-      }).catch((error) => {
-        console.error('Failed to stop scanner after decoding:', error);
-      });
-    },
-    () => {
-      // Ignore background scan errors while the camera is trying to detect a code.
-    }
-  ).then(() => {
-    const runningTrackSettings = html5QrCode.getRunningTrackSettings?.();
-    const facingMode = runningTrackSettings && runningTrackSettings.facingMode;
-    if (facingMode === 'user' || facingMode === 'front') {
-      return html5QrCode.stop().then(() => {
-        throw new Error('The browser selected the front-facing camera.');
-      });
-    }
-  }).catch((error) => {
-    console.error(`Camera configuration ${cameraIndex} failed:`, error);
-    if (cameraIndex < cameraConfigs.length - 1) {
-      return tryCamera(cameraIndex + 1);
-    }
-    throw error;
-  });
-
-  return tryCamera(0);
-}
-
-function getRearCameraConfigs() {
-  return [
-    { facingMode: 'environment' },
-    { facingMode: { exact: 'environment' } },
-    { facingMode: 'user' },
-  ];
-}
-
-function getScannerErrorMessage(error) {
-  switch (error && error.name) {
-    case 'NotAllowedError':
-    case 'PermissionDeniedError':
-    case 'SecurityError':
-      return 'Camera access was blocked. Allow camera access for this site in iOS Settings, then reload and try again.';
-    case 'NotFoundError':
-    case 'DevicesNotFoundError':
-      return 'No camera was found on this device.';
-    case 'NotReadableError':
-    case 'TrackStartError':
-      return 'The camera could not start. Close other apps using the camera and try again.';
-    default:
-      return 'Could not open the rear camera. Check that camera access is allowed and try again.';
-  }
-}
-
-function handleScannerStart() {
-  if (!('mediaDevices' in navigator) || !navigator.mediaDevices?.getUserMedia) {
-    showStatus('This browser does not support camera scanning.', 'error');
-    return;
-  }
-
-  if (!window.isSecureContext) {
-    showStatus('Camera access requires HTTPS or localhost.', 'error');
-    return;
-  }
-
-  if (!html5QrCode) {
-    html5QrCode = new Html5Qrcode('reader', {
-      formatsToSupport: [
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.QR_CODE,
-      ],
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true,
-      },
-    });
-  }
-
-  if (isScanning) {
-    html5QrCode.stop()
-      .then(() => {
-        isScanning = false;
-        readerContainer.classList.add('hidden');
-        scanBtn.textContent = '📷 Scan Card';
-        showStatus('Scanner cancelled.', 'info');
-      })
-      .catch((error) => {
-        console.error('Failed to stop camera:', error);
-        showStatus('Unable to stop the camera cleanly.', 'error');
-      });
-    return;
-  }
-
-  const scanConfig = {
-    fps: 8,
-    qrbox: (viewfinderWidth, viewfinderHeight) => getDynamicQrbox(viewfinderWidth, viewfinderHeight),
-    aspectRatio: 1.333334,
-  };
-
-  readerContainer.classList.remove('hidden');
-  scanBtn.disabled = true;
-  startScannerWithFallback(getRearCameraConfigs(), scanConfig)
-    .then(() => {
-      isScanning = true;
-      scanBtn.disabled = false;
-      scanBtn.textContent = '❌ Cancel Scan';
-      showStatus('Rear camera is ready. Point it at a card.', 'info');
-    })
-    .catch((error) => {
-      console.error('Rear camera error:', error);
-      readerContainer.classList.add('hidden');
-      scanBtn.disabled = false;
-      scanBtn.textContent = '📷 Scan Card';
-      showStatus(getScannerErrorMessage(error), 'error');
-    });
-}
-
-scanBtn.addEventListener('click', handleScannerStart);
 renderPasses();
-showStatus('Ready to add a card.', 'info');
