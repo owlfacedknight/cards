@@ -2,47 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="Minimal wallet for saving cards, barcodes, and QR codes offline.">
-  <meta name="theme-color" content="#1a1a1a">
-  <title>Minimal Wallet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A simple wallet for saving card identifiers and their barcodes or QR codes.">
+  <meta name="theme-color" content="#101114">
+  <title>My Wallet</title>
   <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app-shell">
-    <header>
-      <h1>My Wallet</h1>
-      <button type="button" id="btn-refresh" class="btn-refresh" aria-label="Check for updates and refresh the app">↻ Refresh app</button>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">YOUR DIGITAL WALLET</p>
+        <h1>My Wallet</h1>
+      </div>
+      <button type="button" id="btn-refresh" class="btn-refresh" aria-label="Check for app updates">↻</button>
     </header>
 
     <main>
-      <div id="wallet-container" aria-live="polite"></div>
+      <section class="add-panel" aria-labelledby="add-heading">
+        <h2 id="add-heading">Add a card</h2>
+        <p class="section-description">Enter a name and card number to save it to your wallet.</p>
+        <form id="add-pass-form" novalidate>
+          <label for="pass-title">Card name</label>
+          <input type="text" id="pass-title" placeholder="e.g. Coffee shop" autocomplete="off" maxlength="80" required>
 
-      <div id="reader-container" class="hidden" aria-live="polite">
-        <div id="reader" aria-label="Card scanner"></div>
-        <p class="scan-hint">Hold the card 4–6 inches away and let the camera focus.</p>
-      </div>
+          <label for="pass-value">Card number or ID</label>
+          <input type="text" id="pass-value" placeholder="Enter card number or ID" autocomplete="off" maxlength="500" required>
 
-      <button type="button" id="btn-scan" class="btn-scan">📷 Scan Card</button>
-      <p id="status-message" class="status-message info" role="status" aria-live="polite">Ready to add a card.</p>
+          <button type="submit" class="btn-primary">Add to wallet</button>
+        </form>
+      </section>
 
-      <form id="add-pass-form" novalidate>
-        <label class="sr-only" for="pass-title">Pass name</label>
-        <input type="text" id="pass-title" placeholder="Store or Pass Name" autocomplete="off" required>
+      <p id="status-message" class="status-message" role="status" aria-live="polite">Ready to add a card.</p>
 
-        <label class="sr-only" for="pass-value">Pass value</label>
-        <input type="text" id="pass-value" placeholder="Card Number or ID" autocomplete="off" required>
-
-        <button type="submit" class="btn-primary">Add to Wallet</button>
-      </form>
+      <section class="wallet-section" aria-labelledby="wallet-heading">
+        <div class="section-heading">
+          <h2 id="wallet-heading">Saved cards</h2>
+        </div>
+        <div id="wallet-container" aria-live="polite"></div>
+      </section>
     </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

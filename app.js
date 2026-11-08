@@ -4,14 +4,10 @@ const container = document.getElementById('wallet-container');
 const statusMessage = document.getElementById('status-message');
 const passTitleInput = document.getElementById('pass-title');
 const passValueInput = document.getElementById('pass-value');
-const scanBtn = document.getElementById('btn-scan');
 const refreshBtn = document.getElementById('btn-refresh');
-const readerContainer = document.getElementById('reader-container');
 
 let passes = loadPasses();
 let expandedIndex = null;
-let html5QrCode;
-let isScanning = false;
 let serviceWorkerRegistration = null;
 let isRefreshing = false;
 let isReloadingForUpdate = false;
@@ -24,14 +20,10 @@ function showStatus(message, type = 'info') {
 function loadPasses() {
   try {
     const storedPasses = localStorage.getItem(STORAGE_KEY);
-    if (!storedPasses) {
-      return [];
-    }
+    if (!storedPasses) return [];
 
     const parsed = JSON.parse(storedPasses);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
+    if (!Array.isArray(parsed)) return [];
 
     return parsed.filter(
       (pass) => pass &&
@@ -39,7 +31,7 @@ function loadPasses() {
         typeof pass.value === 'string'
     );
   } catch (error) {
-    console.error('Failed to load wallet passes:', error);
+    console.error('Failed to load wallet cards:', error);
     return [];
   }
 }
@@ -54,16 +46,13 @@ function toggleCard(index) {
 }
 
 function toggleCode(index) {
-  const barcodeEl = document.getElementById(`barcode-${index}`);
-  const qrEl = document.getElementById(`qr-${index}`);
+  const barcode = document.getElementById(`barcode-${index}`);
+  const qr = document.getElementById(`qr-${index}`);
+  if (!barcode || !qr) return;
 
-  if (!barcodeEl || !qrEl) {
-    return;
-  }
-
-  const showBarcode = barcodeEl.classList.contains('hidden');
-  barcodeEl.classList.toggle('hidden', !showBarcode);
-  qrEl.classList.toggle('hidden', showBarcode);
+  const showBarcode = barcode.classList.contains('hidden');
+  barcode.classList.toggle('hidden', !showBarcode);
+  qr.classList.toggle('hidden', showBarcode);
 }
 
 function removePass(index) {
@@ -85,33 +74,33 @@ function removePass(index) {
   expandedIndex = null;
   persistPasses();
   renderPasses();
-  showStatus('Pass deleted.', 'success');
+  showStatus('Card removed.', 'success');
 }
 
 function createCollapsedCard(pass, index) {
-  const card = document.createElement('div');
+  const card = document.createElement('button');
+  card.type = 'button';
   card.className = 'pass-card collapsed';
-  card.setAttribute('role', 'button');
-  card.setAttribute('tabindex', '0');
+  card.setAttribute('aria-expanded', 'false');
+  card.addEventListener('click', () => toggleCard(index));
 
-  const icon = document.createElement('div');
-  icon.className = 'card-icon';
-  icon.textContent = '💳';
-
-  const title = document.createElement('h3');
+  const title = document.createElement('span');
+  title.className = 'card-title';
   title.textContent = pass.title;
 
-  card.append(icon, title);
+  const number = document.createElement('span');
+  number.className = 'card-preview';
+  number.textContent = pass.value;
 
-  const activate = () => toggleCard(index);
-  card.addEventListener('click', activate);
-  card.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      activate();
-    }
-  });
+  const arrow = document.createElement('span');
+  arrow.className = 'card-arrow';
+  arrow.setAttribute('aria-hidden', 'true');
+  arrow.textContent = '›';
 
+  const text = document.createElement('span');
+  text.className = 'card-text';
+  text.append(title, number);
+  card.append(text, arrow);
   return card;
 }
 
@@ -119,14 +108,24 @@ function createExpandedCard(pass, index) {
   const card = document.createElement('article');
   card.className = 'pass-card expanded';
 
+  const header = document.createElement('div');
+  header.className = 'expanded-header';
+
   const title = document.createElement('h3');
   title.textContent = pass.title;
 
-  const codeToggle = document.createElement('div');
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'icon-button';
+  closeButton.setAttribute('aria-label', 'Close card details');
+  closeButton.textContent = '×';
+  closeButton.addEventListener('click', () => toggleCard(index));
+  header.append(title, closeButton);
+
+  const codeToggle = document.createElement('button');
+  codeToggle.type = 'button';
   codeToggle.className = 'code-toggle';
-  codeToggle.setAttribute('role', 'button');
-  codeToggle.setAttribute('tabindex', '0');
-  codeToggle.setAttribute('aria-label', 'Toggle code display');
+  codeToggle.setAttribute('aria-label', 'Switch between barcode and QR code');
 
   const barcodeContainer = document.createElement('div');
   barcodeContainer.id = `barcode-${index}`;
@@ -137,58 +136,40 @@ function createExpandedCard(pass, index) {
     'svg'
   );
   barcode.setAttribute('class', 'barcode');
-  barcode.setAttribute('data-value', pass.value);
   barcodeContainer.appendChild(barcode);
 
   const qrContainer = document.createElement('div');
   qrContainer.id = `qr-${index}`;
-  qrContainer.className = 'qr-container hidden';
+  qrContainer.className = 'code-panel hidden';
 
-  const tapHint = document.createElement('p');
-  tapHint.className = 'tap-hint';
-  tapHint.textContent = 'Tap code to switch (Barcode / QR)';
+  codeToggle.append(barcodeContainer, qrContainer);
+  codeToggle.addEventListener('click', () => toggleCode(index));
 
-  codeToggle.append(barcodeContainer, qrContainer, tapHint);
+  const codeHint = document.createElement('p');
+  codeHint.className = 'code-hint';
+  codeHint.textContent = 'Tap the code to switch between barcode and QR';
 
-  const passCode = document.createElement('div');
+  const passCode = document.createElement('p');
   passCode.className = 'pass-code';
   passCode.textContent = pass.value;
-
-  const buttonGroup = document.createElement('div');
-  buttonGroup.className = 'button-group';
-
-  const closeButton = document.createElement('button');
-  closeButton.type = 'button';
-  closeButton.className = 'btn-close';
-  closeButton.textContent = 'Close';
-  closeButton.addEventListener('click', () => toggleCard(index));
 
   const deleteButton = document.createElement('button');
   deleteButton.type = 'button';
   deleteButton.className = 'btn-delete';
-  deleteButton.textContent = 'Delete';
+  deleteButton.textContent = 'Remove card';
   deleteButton.addEventListener('click', () => removePass(index));
 
-  buttonGroup.append(closeButton, deleteButton);
-  card.append(title, codeToggle, passCode, buttonGroup);
-
-  codeToggle.addEventListener('click', () => toggleCode(index));
-  codeToggle.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      toggleCode(index);
-    }
-  });
+  card.append(header, codeToggle, codeHint, passCode, deleteButton);
 
   try {
     JsBarcode(barcode, pass.value, {
       format: 'CODE128',
       width: 2,
-      height: 60,
+      height: 64,
       displayValue: false,
       background: '#ffffff',
-      lineColor: '#000000',
-      margin: 5,
+      lineColor: '#111827',
+      margin: 8,
     });
   } catch (error) {
     barcodeContainer.innerHTML =
@@ -198,25 +179,26 @@ function createExpandedCard(pass, index) {
   try {
     new QRCode(qrContainer, {
       text: pass.value,
-      width: 120,
-      height: 120,
-      colorDark: '#000000',
+      width: 160,
+      height: 160,
+      colorDark: '#111827',
       colorLight: '#ffffff',
     });
   } catch (error) {
-    qrContainer.innerHTML = '<p class="error">Invalid QR data</p>';
+    qrContainer.textContent = 'Could not create a QR code.';
+    qrContainer.classList.add('code-error');
   }
 
   return card;
 }
 
 function renderPasses() {
-  container.innerHTML = '';
+  container.replaceChildren();
 
   if (passes.length === 0) {
-    const emptyState = document.createElement('p');
+    const emptyState = document.createElement('div');
     emptyState.className = 'empty-state';
-    emptyState.textContent = 'No cards saved yet. Add one to get started.';
+    emptyState.textContent = 'Your saved cards will appear here.';
     container.appendChild(emptyState);
     return;
   }
@@ -230,28 +212,20 @@ function renderPasses() {
   });
 }
 
-function validateForm() {
+form.addEventListener('submit', (event) => {
+  event.preventDefault();
+
   const title = passTitleInput.value.trim();
   const value = passValueInput.value.trim();
 
   if (!title || !value) {
-    showStatus('Please add both a pass name and a value.', 'error');
-    return null;
+    showStatus('Enter both a card name and number.', 'error');
+    (!title ? passTitleInput : passValueInput).focus();
+    return;
   }
 
   if (title.length > 80 || value.length > 500) {
-    showStatus('Your pass title or value is too long.', 'error');
-    return null;
-  }
-
-  return { title, value };
-}
-
-form.addEventListener('submit', (event) => {
-  event.preventDefault();
-
-  const payload = validateForm();
-  if (!payload) {
+    showStatus('Card name or number is too long.', 'error');
     return;
   }
 
@@ -262,26 +236,25 @@ form.addEventListener('submit', (event) => {
   );
 
   if (duplicate) {
-    showStatus('This pass already exists in your wallet.', 'error');
+    showStatus('That card is already saved.', 'error');
     return;
   }
 
-  passes.push({ title: payload.title, value: payload.value });
+  passes.push({ title, value });
   persistPasses();
+  expandedIndex = passes.length - 1;
   form.reset();
   renderPasses();
-  showStatus('Pass added to wallet.', 'success');
+  showStatus('Card added to your wallet.', 'success');
   passTitleInput.focus();
 });
 
 function activateWaitingWorker(registration) {
-  if (!registration.waiting) {
-    return false;
-  }
+  if (!registration.waiting) return false;
 
   isReloadingForUpdate = true;
   registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-  showStatus('Update downloaded. Reloading the wallet…', 'success');
+  showStatus('Update ready. Reloading…', 'info');
   return true;
 }
 
@@ -300,15 +273,11 @@ async function refreshApp() {
 
   isRefreshing = true;
   refreshBtn.disabled = true;
-  refreshBtn.textContent = 'Checking…';
-  showStatus('Checking for the latest version…', 'info');
+  showStatus('Checking for updates…', 'info');
 
   try {
     await serviceWorkerRegistration.update();
-
-    if (activateWaitingWorker(serviceWorkerRegistration)) {
-      return;
-    }
+    if (activateWaitingWorker(serviceWorkerRegistration)) return;
 
     const installingWorker = serviceWorkerRegistration.installing;
     if (installingWorker) {
@@ -321,9 +290,8 @@ async function refreshApp() {
         }
 
         if (installingWorker.state === 'redundant' && isRefreshing) {
-          showStatus('The wallet is up to date.', 'success');
+          showStatus('You have the latest version.', 'success');
           refreshBtn.disabled = false;
-          refreshBtn.textContent = '↻ Refresh app';
           isRefreshing = false;
         }
       });
@@ -332,8 +300,9 @@ async function refreshApp() {
       return;
     }
 
-    showStatus('Wallet is up to date. Reloading with the latest files…', 'success');
-    window.location.reload();
+    showStatus('You have the latest version.', 'success');
+    refreshBtn.disabled = false;
+    isRefreshing = false;
   } catch (error) {
     console.error('Failed to check for app updates:', error);
     showStatus(
@@ -341,7 +310,6 @@ async function refreshApp() {
       'error'
     );
     refreshBtn.disabled = false;
-    refreshBtn.textContent = '↻ Refresh app';
     isRefreshing = false;
   }
 }
@@ -350,9 +318,7 @@ refreshBtn.addEventListener('click', refreshApp);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (isReloadingForUpdate) {
-      window.location.reload();
-    }
+    if (isReloadingForUpdate) window.location.reload();
   });
 
   window.addEventListener('load', () => {
@@ -362,9 +328,7 @@ if ('serviceWorker' in navigator) {
 
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
-          if (!newWorker) {
-            return;
-          }
+          if (!newWorker) return;
 
           newWorker.addEventListener('statechange', () => {
             if (
@@ -379,9 +343,7 @@ if ('serviceWorker' in navigator) {
           });
         });
       })
-      .catch((error) => {
-        console.error('Service worker registration failed:', error);
-      });
+      .catch((error) => console.error('Service worker registration failed:', error));
   });
 }
 
@@ -534,4 +496,3 @@ function handleScannerStart() {
 
 scanBtn.addEventListener('click', handleScannerStart);
 renderPasses();
-showStatus('Ready to add a card.', 'info');
